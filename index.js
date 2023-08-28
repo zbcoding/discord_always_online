@@ -1,4 +1,4 @@
-/* can use with uptime checker and replit */
+/* can use with uptimerobot and replit */
 
 const Eris = require("eris");
 //https://www.npmjs.com/package/eris
