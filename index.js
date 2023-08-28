@@ -16,7 +16,7 @@ const account = new Eris(process.env['TOKEN']);
 
 /*create a discord webhook and then use to notify you if there's issue getting your account, e.g. to refresh your account token*/
 
-/*Put the webhook_url in the replit secrets. webhook_url_low is another url for noncritical errors sent to muted discord channel, make one or only use the same webhook_url*/
+/*Put the webhook_url in the replit secrets. webhook_url_low is another url for noncritical errors sent to muted discord channel, make another webhook or use the same webhook_url and channel*/
 
 account.on("error", async (err) => {
     let message = "";
