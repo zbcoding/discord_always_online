@@ -36,11 +36,10 @@ account.on("error", async (err) => {
             },
             body: JSON.stringify({ content: message }),
         });
-
         console.log("Sent error notification to Discord.");
     }
     /*TODO refactor */
-    /*common errors to discord bot message outputs*/
+    /*common errors you can choose to ignore*/
     else if (err.toString().includes("TypeError: Cannot read properties of undefined (reading 'add')")) {
         console.log(`An error occurred in the Discord bot. ${err}`);
     }
@@ -50,6 +49,7 @@ account.on("error", async (err) => {
     else if (err.toString().includes("Error: Connection reset by peer")) {
         console.log(`An error occurred in the Discord bot. ${err}`);
     }
+    /*other unknown errors can be sent to low importance discord channel*/
     else {
         message = `An error occurred in the Discord bot. ${err}\n`;
 
