@@ -8,4 +8,4 @@ e.g.: for this line `const webhookURL = process.env['WEBHOOK_URL'];`, you would 
 
 If the code stops (e.g. you changed your discord password which requires you to update the auth key), an error message is sent to a notification channel in discord via discord webhook/bot.
 
-More information in the code comments
+Also read all the information in the code comments.
