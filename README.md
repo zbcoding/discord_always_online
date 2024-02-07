@@ -1,7 +1,8 @@
 # discord_always_online
 Keeps the online status of discord profile online (green icon)
 
-Use with uptimerobot and replit to automate the script.
+Use with uptimerobot and replit to automate the script or use another service with a cron job/pinger.
+You'll need to add .env if not using replit.
 
 You'll need a discord webhook bot set up with credentials.
 You can get your discord token from the developer console local storage. Sometimes starts with "Mfa", or is similar to this example: Mjg2VoidOTY1MVoidDM1OTI0.G3g32e.2ZhtTR6RMGiGz_FTd-85kLc1oHtPA212LZOETg
