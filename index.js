@@ -1,5 +1,6 @@
-const Eris = require("eris");
+require('dotenv').config();
 //Eris is a package for interacting with Discord
+const Eris = require("eris");
 const keepAlive = require("./server");
 
 keepAlive();
