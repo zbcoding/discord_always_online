@@ -9,6 +9,8 @@ server.all("/", (req, res) => {
   res.send(`Your account is alive! ${date}`);
 });
 
+server.listen(process.env.PORT || 3000)
+
 function keepAlive() {
   const port = process.env.PORT || 3000;
 
