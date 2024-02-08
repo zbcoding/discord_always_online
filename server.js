@@ -6,6 +6,7 @@ server.get('/favicon.ico', (req, res) => res.status(204));
 
 server.all("/", (req, res) => {
   var date = Date();
+  console.log("Just got a request!")
   res.send(`Your account is alive! ${date}`);
 });
 
