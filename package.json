@@ -1,6 +1,17 @@
 {
+    "name": "discord_always_online",
+    "version": "1.0.0",
+    "description": "Keeps discord status online/green",
+    "main": "index.js",
     "scripts": {
-        "start": "node ./index.js"
+      "start": "node index.js"
+    },
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/zbcoding/discord_always_online.git"
+    },
+    "scripts": {
+        "start": "node index.js"
       },
     "dependencies": {
         "dotenv": "^16.4.1",
