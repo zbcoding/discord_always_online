@@ -8,7 +8,7 @@ server.all("/", (req, res) => {
   const date = Date();
   console.log("Just got a request!");
   const username = getUsername();
-  const firstUserNameChar = username ? `${username[0]}` : '?';
+  const firstUserNameChar = username ? `"${username[0]}..."` : '?';
   res.send(`Your account ${firstUserNameChar} is alive! ${date}`);
 });
 
