@@ -10,6 +10,7 @@ in the header tab below
 */
 
 const account = new Eris(process.env['TOKEN']);
+module.exports.username = account.username;
 
 /*create a discord webhook and then use to notify you if there's issue getting your account, e.g. to refresh your account token*/
 /*Put the webhook_url in the replit secrets. webhook_url_low is another url for noncritical errors sent to muted discord channel, make another webhook or use the same webhook_url and channel*/

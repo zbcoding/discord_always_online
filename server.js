@@ -1,13 +1,14 @@
 require('dotenv').config();
 const express = require("express");
 const server = express();
+const { username } = require('./index');
 
 server.get('/favicon.ico', (req, res) => res.status(204));
-
 server.all("/", (req, res) => {
-  var date = Date();
-  console.log("Just got a request!")
-  res.send(`Your account is alive! ${date}`);
+  const date = Date();
+  console.log("Just got a request!");
+  const firstUserNameChar = username ? `${username[0]}` : '?';
+  res.send(`Your account ${firstUserNameChar} is alive! ${date}`);
 });
 
 function keepAlive() {
