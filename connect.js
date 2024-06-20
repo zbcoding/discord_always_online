@@ -1,14 +1,15 @@
 require("dotenv").config();
-//Eris is a package for interacting with Discord
 const Eris = require("eris");
 
 const account = new Eris(process.env["TOKEN"]);
 
 // Export the username
-module.exports.getUsername = () => account.username;
+function getUsername() {
+  return account.user ? account.user.username : undefined;
+}
 
 // Export the connect function
-module.exports.connect = () => {
+function connectBot() {
   account.on("error", async (err) => {
     let message = "";
     if (err.toString().includes("Error: Invalid token")) {
@@ -68,4 +69,9 @@ module.exports.connect = () => {
     }
   });
   account.connect();
+}
+
+module.exports = {
+  connectBot,
+  getUsername,
 };

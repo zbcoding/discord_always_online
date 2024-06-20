@@ -1,5 +1,5 @@
 const keepAlive = require("./server");
-const connect = require("./connect");
+const { connectBot } = require("./connect");
 
+connectBot();
 keepAlive();
-connect();
