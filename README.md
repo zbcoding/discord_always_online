@@ -2,8 +2,8 @@
 Keeps the online status of discord profile online (green icon) no matter how you are using the application on desktop/mobile.
 
 Ways to use this:
-a) Use with uptimerobot and replit to automate the script
-b) use another node service like onrender with a cron job/pinger (free online cronjob).
+- a) Use with uptimerobot and replit to automate the script
+- b) use another node service like onrender with a cron job/pinger (free online cronjob).
 You'll need to add .env if not using replit.
 
 You'll need a discord webhook bot set up with credentials.
