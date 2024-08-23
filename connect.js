@@ -5,12 +5,12 @@ dotenv.config();
 const account = new Eris(process.env["TOKEN"]);
 
 // Export the username
-function getUsername() {
+export function getUsername() {
   return account.user ? account.user.username : undefined;
 }
 
 // Export the connect function
-function connectBot() {
+export function connectBot() {
   account.on("error", async (err) => {
     let message = "";
     if (err.toString().includes("Error: Invalid token")) {
@@ -71,8 +71,3 @@ function connectBot() {
   });
   account.connect();
 }
-
-module.exports = {
-  connectBot,
-  getUsername,
-};

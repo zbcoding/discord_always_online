@@ -1,4 +1,4 @@
-import keepAlive from './server.js';
+import { keepAlive } from './server.js';
 import { connectBot } from './connect.js';
 
 connectBot();

@@ -14,7 +14,7 @@ server.all("/", (req, res) => {
   res.send(`Your account ${firstUserNameChar} is alive! ${date}`);
 });
 
-function keepAlive() {
+export function keepAlive() {
   const port = process.env.PORT || 3000;
   server.listen(port, '0.0.0.0', (err) => {
     if (err) {
@@ -28,5 +28,3 @@ function keepAlive() {
     console.error('Server error:', err);
   });
 }
-
-module.exports = keepAlive;
