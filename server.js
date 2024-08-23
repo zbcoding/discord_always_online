@@ -1,7 +1,9 @@
-require('dotenv').config();
-const express = require("express");
+import dotenv from 'dotenv';
+import express from 'express';
+import { getUsername } from './connect.js';
+
+dotenv.config();
 const server = express();
-const { getUsername } = require('./connect');
 
 server.get('/favicon.ico', (req, res) => res.status(204));
 server.all("/", (req, res) => {

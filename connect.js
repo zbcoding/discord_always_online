@@ -1,5 +1,6 @@
-require("dotenv").config();
-const Eris = require("eris");
+import dotenv from 'dotenv';
+import Eris from 'eris';
+dotenv.config();
 
 const account = new Eris(process.env["TOKEN"]);
 

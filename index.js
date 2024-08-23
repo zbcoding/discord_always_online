@@ -1,5 +1,5 @@
-const keepAlive = require("./server");
-const { connectBot } = require("./connect");
+import keepAlive from './server.js';
+import { connectBot } from './connect.js';
 
 connectBot();
 keepAlive();
