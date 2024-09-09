@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import { getUsername } from './connect.js';
+import { sendError } from './error.js';
 
 dotenv.config();
 const server = express();
@@ -25,6 +26,7 @@ export function keepAlive() {
     }
   });
   server.on('error', (err) => {
+    sendError(err);
     console.error('Server error:', err);
   });
 }
