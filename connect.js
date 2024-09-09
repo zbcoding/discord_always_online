@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import Eris from 'eris';
-import { sendError, sendLowError } from './error';
+import { sendError, sendLowError } from './error.js';
 dotenv.config();
 
 const account = new Eris(process.env["TOKEN"]);

@@ -2,7 +2,7 @@ import fetch from 'node-fetch';
 
 export async function sendError(errorMessage) {
     const webhookURL = process.env["WEBHOOK_URL"];
-      await fetch.default(webhookURL, {
+      await fetch(webhookURL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -14,7 +14,7 @@ export async function sendError(errorMessage) {
 
 export async function sendLowError(lowErrorMessage) {
     const webhookURL = process.env["WEBHOOK_URL_LOW"];
-    await fetch.default(webhookURL, {
+    await fetch(webhookURL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
