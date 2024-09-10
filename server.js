@@ -11,8 +11,9 @@ server.all("/", (req, res) => {
   const date = Date();
   console.log("Just got a request!");
   const username = getUsername();
-  const firstUserNameChar = username ? `"${username[0]}..."` : '?';
-  res.send(`Your account ${firstUserNameChar} is alive! ${date}`);
+  const firstUserNameChar = username.length > 0 ? `"${username[0]}"` : '?';
+  const lastUserNameChar = username.length > 0 ? `"...${username[username.length - 1]}"` : '?';
+  res.send(`Your account ${firstUserNameChar}...${lastUserNameChar} is alive! ${date}`);
 });
 
 export function keepAlive() {
