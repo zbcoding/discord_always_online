@@ -12,7 +12,7 @@ server.all("/", (req, res) => {
   console.log("Just got a request!");
   const username = getUsername();
   const firstUserNameChar = username.length > 0 ? `"${username[0]}"` : '?';
-  const lastUserNameChar = username.length > 0 ? `"...${username[username.length - 1]}"` : '?';
+  const lastUserNameChar = username.length > 0 ? `"${username[username.length - 1]}"` : '?';
   res.send(`Your account ${firstUserNameChar}...${lastUserNameChar} is alive! ${date}`);
 });
 
