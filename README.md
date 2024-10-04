@@ -4,7 +4,7 @@ Keeps the online status of discord profile online (green icon) no matter how you
 Ways to use this:
 - a) Use with uptimerobot and replit to automate the script
 - b) use another node service like onrender with a cron job/pinger (free online cronjob).
-You'll need to add .env if not using replit.
+You'll need to add values to .env if not using replit or app platform service.
 
 You'll need a discord webhook bot set up with credentials.
 You can get your discord token from the developer console local storage. Sometimes starts with "Mfa", or is similar to this example: Mjg2VoidOTY1MVoidDM1OTI0.G3g32e.2ZhtTR6RMGiGz_FTd-85kLc1oHtPA212LZOETg
@@ -21,7 +21,7 @@ You can find your mfa token by searching "mfa" in the developer console on the a
 - Create a discord webhook and then use to notify you if there's issue getting your account, e.g. to refresh your account token
 - Put the webhook_url in the replit secrets.
 - webhook_url_low is another url for noncritical errors sent to muted discord channel, make another webhook or use the same webhook_url and channel.
-
+- Port can be edited by adding `PORT` in .env (default: 3000)
 
 ```npm i```
 ```node .\index.js```
