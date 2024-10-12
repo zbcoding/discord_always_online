@@ -16,8 +16,7 @@ If the code stops (e.g. you changed your discord password which requires you to 
 
 Also read all the information in the code comments.
 
-You can find your mfa token by searching "mfa" in the developer console on the application tab. Discord likes to hide this after loading so if you refresh the page then click "x" to stop the refresh you can catch and copy the mfa token value before it disappears. then put this token in replit secrets or you put your token in a .env file to secure Alternatively: Network tab, filter by /api, search for library in the list, check for authorization: key in the header tab below.
-
+You can find your mfa token by searching "mfa" or "token" in the developer console on the application tab. Check the local storage. Alternatively: Network tab, filter by /api, search for library in the list, check for authorization: key in the header tab below. Discord likes to hide the token after loading the page. In order to copy the token, you can try stopping the page from loading or using the network tab in developer settings to slow the page load down. Put the token in replit secrets, the app platform's environment variables, or in a .env file.
 - Create a discord webhook and then use to notify you if there's issue getting your account, e.g. to refresh your account token
 - Put the webhook_url in the replit secrets.
 - webhook_url_low is another url for noncritical errors sent to muted discord channel, make another webhook or use the same webhook_url and channel.
