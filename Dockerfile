@@ -1,6 +1,9 @@
 # Use official Node.js LTS (Long Term Support) image
 FROM node:20-alpine
 
+# Install curl for health checks
+RUN apk add --no-cache curl
+
 # Create app directory
 WORKDIR /app
 
@@ -24,9 +27,9 @@ USER nodejs
 # Expose port (default 3000, can be overridden with PORT env var)
 EXPOSE 3000
 
-# Health check
+# Health check - curl is more reliable than node fetch for this
 HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "fetch('http://localhost:${PORT:-3000}').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD curl -f http://localhost:3000/ || exit 1
 
 # Start the application
 CMD ["node", "index.js"]
