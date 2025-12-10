@@ -284,6 +284,34 @@ function setupErrorHandlers(botInstance) {
     }
     
     scheduleStatusRefresh(); // Start the randomized refresh cycle
+    
+    // ADDITION: Monitor presence changes to detect if status goes idle
+    // If it does, wait 5-10 seconds then set back to online (like coming back to PC)
+    client.on('presenceUpdate', (oldPresence, newPresence) => {
+      // Only monitor our own user's presence
+      if (newPresence.userId === client.user.id) {
+        const newStatus = newPresence.status;
+        
+        // If status changed to idle or dnd, schedule return to online
+        if (newStatus === 'idle' || newStatus === 'dnd') {
+          console.log(`[${new Date().toISOString()}] [Bot #${id}] Status changed to ${newStatus.toUpperCase()}, will return to online`);
+          
+          // Random delay between 5-10 seconds
+          const randomDelay = (Math.random() * 5 + 5) * 1000;
+          
+          setTimeout(() => {
+            if (client.user) {
+              try {
+                client.user.setStatus('online');
+                console.log(`[${new Date().toISOString()}] [Bot #${id}] Returned status to ONLINE after ${(randomDelay/1000).toFixed(1)}s`);
+              } catch (err) {
+                console.log(`[${new Date().toISOString()}] [Bot #${id}] Failed to return to online:`, err.message);
+              }
+            }
+          }, randomDelay);
+        }
+      }
+    });
   });
 }
 
