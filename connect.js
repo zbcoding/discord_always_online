@@ -247,6 +247,43 @@ function setupErrorHandlers(botInstance) {
     console.log(`[${new Date().toISOString()}] [Bot #${id}] ✓ Successfully connected as ${client.user.username}`);
     console.log(`  User ID: ${client.user.id}`);
     console.log(`  Tag: ${client.user.tag}`);
+    
+    // Set status to online
+    try {
+      client.user.setStatus('online');
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Status set to ONLINE`);
+    } catch (err) {
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Failed to set status:`, err.message);
+    }
+    
+    // Schedule status refreshes with randomized timing (3-7 minutes)
+    // This prevents Discord from marking the account as idle/away
+    // Randomized intervals make it less predictable and more natural
+    function scheduleStatusRefresh() {
+      if (botInstance.statusTimeout) {
+        clearTimeout(botInstance.statusTimeout);
+      }
+      
+      // Random interval between 3-7 minutes
+      const minMinutes = 3;
+      const maxMinutes = 7;
+      const randomMs = (Math.random() * (maxMinutes - minMinutes) + minMinutes) * 60 * 1000;
+      
+      botInstance.statusTimeout = setTimeout(() => {
+        if (client.user) {
+          try {
+            client.user.setStatus('online');
+            console.log(`[${new Date().toISOString()}] [Bot #${id}] Status refreshed (keeping online, next in ${((Math.random() * (maxMinutes - minMinutes) + minMinutes)).toFixed(1)}m)`);
+            scheduleStatusRefresh(); // Schedule next refresh
+          } catch (err) {
+            console.log(`[${new Date().toISOString()}] [Bot #${id}] Status refresh failed:`, err.message);
+            scheduleStatusRefresh(); // Try again
+          }
+        }
+      }, randomMs);
+    }
+    
+    scheduleStatusRefresh(); // Start the randomized refresh cycle
   });
 }
 

@@ -255,6 +255,15 @@ connectAllBots(true); // Stagger initial connections
 
 // Only use internal scheduling if explicitly enabled
 if (USE_INTERNAL_SCHEDULING) {
+  console.log('⚠️  Internal scheduled reconnections are DISABLED to avoid Discord rate limits');
+  console.log('   Bots will stay connected indefinitely and only reconnect if disconnected');
+  console.log('   This is more reliable and less likely to trigger automation detection');
+  
+  // DISABLED: Scheduled reconnections cause Discord to rate limit
+  // Discord keeps connections alive once established - no need to reconnect
+  // The bots will automatically reconnect if they get disconnected
+  
+  /*
   // Schedule independent reconnections for each bot at random intervals
   function scheduleNextReconnect(botId) {
     const minMinutes = 3;
@@ -285,6 +294,7 @@ if (USE_INTERNAL_SCHEDULING) {
   });
 
   console.log(`Independent reconnection schedules set up for ${botInstances.length} bot(s)`);
+  */
 } else {
   console.log('Waiting for external cron pings to trigger reconnections...');
 }
