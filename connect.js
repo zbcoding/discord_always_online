@@ -15,7 +15,7 @@ function connectBot() {
     if (err.toString().includes("Error: Invalid token")) {
       message = `An error occurred in the Discord bot. 
                   Probably invalid token. 
-                  See replit.\n`;
+                  \n`;
 
       const webhookURL = process.env["WEBHOOK_URL"];
 
