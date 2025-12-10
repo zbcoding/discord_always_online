@@ -97,7 +97,22 @@ export function initializeBots() {
     const token = tokens[i];
     // Create a NEW Eris client instance for each token
     // This ensures each account has its own independent websocket connection
-    const account = new Eris(token);
+    
+    // Configure client to appear as...
+    const clientOptions = {
+      restMode: true, // Don't connect to gateway automatically
+      compress: false, // Disable compression
+      // Gateway connection properties to mimic Discord Desktop
+      ws: {
+        properties: {
+          $os: 'Linux',
+          $browser: 'Chrome',
+          $device: 'desktop',
+        }
+      }
+    };
+    
+    const account = new Eris(token, clientOptions);
 
     botInstances.push({
       id: i,
