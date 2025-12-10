@@ -18,6 +18,24 @@ app.get('/', (req, res) => {
   const uptime = process.uptime();
   const mode = USE_INTERNAL_SCHEDULING ? 'Internal Scheduling' : 'External Cron';
 
+  // Format uptime using Temporal API (accounts for leap years)
+  function formatUptime(seconds) {
+    const start = Temporal.PlainDateTime.from("1970-01-01T00:00");
+    const end = start.add({ seconds: Math.floor(seconds) });
+
+    const diff = start.until(end, { largestUnit: "years" });
+
+    const parts = [];
+    if (diff.years > 0) parts.push(`${diff.years} year${diff.years !== 1 ? 's' : ''}`);
+    if (diff.days > 0) parts.push(`${diff.days} day${diff.days !== 1 ? 's' : ''}`);
+    if (diff.hours > 0) parts.push(`${diff.hours} hour${diff.hours !== 1 ? 's' : ''}`);
+    if (diff.minutes > 0) parts.push(`${diff.minutes} min`);
+
+    return parts.length > 0 ? parts.join(', ') : '0 min';
+  }
+
+  const formattedUptime = formatUptime(uptime);
+
   // In external cron mode, trigger reconnection when this endpoint is hit
   if (!USE_INTERNAL_SCHEDULING) {
     console.log("External cron ping received - triggering reconnection");
@@ -201,7 +219,7 @@ app.get('/', (req, res) => {
             </div>
             <div class="info-card">
               <h3>Uptime</h3>
-              <p>${Math.floor(uptime / 60)} min</p>
+              <p>${formattedUptime}</p>
             </div>
             <div class="info-card">
               <h3>Accounts</h3>
