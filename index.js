@@ -26,7 +26,7 @@ app.get('/', (req, res) => {
 
   // Build HTML account rows
   const accountRows = botInstances.map((bot, i) => {
-    const username = bot.account.user ? bot.account.user.username : null;
+    const username = bot.client.user ? bot.client.user.username : null;
     let displayName = 'Connecting...';
     let statusText = bot.status || 'unknown';
 
