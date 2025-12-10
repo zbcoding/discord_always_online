@@ -28,7 +28,7 @@ USER nodejs
 EXPOSE 3000
 
 # Health check - curl is more reliable than node fetch for this
-HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30m --timeout=10s --retries=5 \
   CMD curl -f http://localhost:3000/ || exit 1
 
 # Start the application
