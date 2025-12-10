@@ -109,7 +109,9 @@ export function initializeBots() {
       status: 'disconnected', // 'connecting' | 'connected' | 'error' | 'disconnected'
       errorCount: 0,
       lastError: null,
-      lastErrorTime: null
+      lastErrorTime: null,
+      consecutiveErrors: 0, // Track consecutive errors for backoff
+      backoffMs: 0 // Current backoff delay in ms
     });
   }
 
@@ -144,9 +146,18 @@ function setupErrorHandlers(botInstance) {
 
     // Track error in bot instance
     botInstance.errorCount++;
+    botInstance.consecutiveErrors++;
     botInstance.lastError = errStr;
     botInstance.lastErrorTime = new Date();
     botInstance.status = 'error';
+    
+    // Calculate exponential backoff: 30s, 60s, 120s, 240s, etc. (capped at 10 min)
+    const baseBackoff = 30000; // 30 seconds
+    const maxBackoff = 300000; // 5 minutes
+    botInstance.backoffMs = Math.min(
+      baseBackoff * Math.pow(2, botInstance.consecutiveErrors - 1),
+      maxBackoff
+    );
 
     if (errStr.includes("Error: Invalid token")) {
       errorMessage += `An error occurred in the Discord bot. Invalid token.\n`;
@@ -156,15 +167,15 @@ function setupErrorHandlers(botInstance) {
         "TypeError: Cannot read properties of undefined (reading 'add')"
       )
     ) {
-      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'add' (error #${botInstance.errorCount})`);
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'add' (error #${botInstance.errorCount}, backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s)`);
     } else if (
       errStr.includes(
         "TypeError: Cannot read properties of undefined (reading 'get')"
       )
     ) {
-      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'get' (error #${botInstance.errorCount})`);
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'get' (error #${botInstance.errorCount}, backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s)`);
     } else if (errStr.includes("Error: Connection reset by peer")) {
-      console.log(`[${new Date().toISOString()}] [Bot #${id}] Connection reset by peer (error #${botInstance.errorCount})`);
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Connection reset by peer (error #${botInstance.errorCount}, backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s)`);
     } else {
       /*other unknown errors can be sent to low importance discord webhook*/
       errorMessage += `An error occurred in the Discord bot. ${err}\n`;
@@ -181,6 +192,8 @@ function setupErrorHandlers(botInstance) {
     botInstance.username = account.user.username;
     botInstance.status = 'connected';
     botInstance.errorCount = 0; // Reset error count on successful connection
+    botInstance.consecutiveErrors = 0; // Reset consecutive errors
+    botInstance.backoffMs = 0; // Reset backoff
     botInstance.lastError = null;
     console.log(`[${new Date().toISOString()}] [Bot #${id}] Connected as ${account.user.username}`);
   });
@@ -218,6 +231,22 @@ export function connectBot(botId) {
     throw new Error(`Invalid bot ID: ${botId}`);
   }
 
+  const botInstance = botInstances[botId];
+  
+  // Check if we should apply backoff delay
+  if (botInstance.backoffMs > 0 && botInstance.status === 'error') {
+    console.log(`[${new Date().toISOString()}] [Bot #${botId}] Delaying reconnection by ${(botInstance.backoffMs/1000).toFixed(0)}s due to errors`);
+    setTimeout(() => {
+      attemptConnection(botId);
+    }, botInstance.backoffMs);
+    return;
+  }
+  
+  attemptConnection(botId);
+}
+
+// Internal function to actually attempt connection
+function attemptConnection(botId) {
   const botInstance = botInstances[botId];
 
   // Only setup error handlers if not already set up
