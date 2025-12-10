@@ -151,7 +151,7 @@ function setupErrorHandlers(botInstance) {
     botInstance.lastErrorTime = new Date();
     botInstance.status = 'error';
     
-    // Calculate exponential backoff: 30s, 60s, 120s, 240s, etc. (capped at 10 min)
+    // Calculate exponential backoff: 30s, 60s, 120s, 240s, etc. (capped at 5 min)
     const baseBackoff = 30000; // 30 seconds
     const maxBackoff = 300000; // 5 minutes
     botInstance.backoffMs = Math.min(
@@ -159,33 +159,65 @@ function setupErrorHandlers(botInstance) {
       maxBackoff
     );
 
-    if (errStr.includes("Error: Invalid token")) {
-      errorMessage += `An error occurred in the Discord bot. Invalid token.\n`;
+    // Log full error details for debugging
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] ERROR DETAILS:`);
+    console.log(`  Error type: ${err.name || 'Unknown'}`);
+    console.log(`  Error message: ${err.message || errStr}`);
+    console.log(`  Error count: ${botInstance.errorCount}, consecutive: ${botInstance.consecutiveErrors}`);
+    console.log(`  Next retry backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s`);
+    
+    if (err.code) {
+      console.log(`  Error code: ${err.code}`);
+    }
+    
+    // Show stack trace for debugging (first 3 lines)
+    if (err.stack) {
+      const stackLines = err.stack.split('\n').slice(0, 3).join('\n');
+      console.log(`  Stack trace:\n${stackLines}`);
+    }
+
+    // Handle specific error types
+    if (errStr.includes("Error: Invalid token") || errStr.includes("401") || errStr.includes("Unauthorized")) {
+      errorMessage += `Invalid or unauthorized token. Check if token is valid and not expired.\n`;
+      console.log(`  ⚠️  This appears to be an authentication error. Verify your token is correct.`);
       sendError(errorMessage);
     } else if (
       errStr.includes(
         "TypeError: Cannot read properties of undefined (reading 'add')"
       )
     ) {
-      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'add' (error #${botInstance.errorCount}, backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s)`);
+      console.log(`  ℹ️  Internal Eris error - may indicate connection/auth issue`);
     } else if (
       errStr.includes(
         "TypeError: Cannot read properties of undefined (reading 'get')"
       )
     ) {
-      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'get' (error #${botInstance.errorCount}, backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s)`);
+      console.log(`  ℹ️  Internal Eris error - may indicate connection/auth issue`);
     } else if (errStr.includes("Error: Connection reset by peer")) {
-      console.log(`[${new Date().toISOString()}] [Bot #${id}] Connection reset by peer (error #${botInstance.errorCount}, backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s)`);
+      console.log(`  ℹ️  Connection was reset - network or Discord server issue`);
+    } else if (errStr.includes("ECONNREFUSED") || errStr.includes("ENOTFOUND")) {
+      console.log(`  ℹ️  Network connection error - check internet connectivity`);
+      errorMessage += `Network connection error. ${err}\n`;
+      sendLowError(errorMessage);
+    } else if (errStr.includes("429") || errStr.includes("rate limit")) {
+      console.log(`  ⚠️  RATE LIMITED by Discord - backing off`);
+      errorMessage += `Rate limited by Discord. ${err}\n`;
+      sendLowError(errorMessage);
     } else {
-      /*other unknown errors can be sent to low importance discord webhook*/
+      // Unknown error - send to webhook and log full details
+      console.log(`  ⚠️  UNKNOWN ERROR TYPE - Full error object:`);
+      console.log(err);
       errorMessage += `An error occurred in the Discord bot. ${err}\n`;
       sendLowError(errorMessage);
     }
+    
+    console.log(''); // Blank line for readability
   });
 
   account.on("disconnect", () => {
     botInstance.status = 'disconnected';
-    console.log(`[${new Date().toISOString()}] [Bot #${id}] Disconnected`);
+    const reason = arguments[0] || 'Unknown reason';
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] Disconnected - Reason: ${reason}`);
   });
 
   account.on("ready", () => {
@@ -195,7 +227,9 @@ function setupErrorHandlers(botInstance) {
     botInstance.consecutiveErrors = 0; // Reset consecutive errors
     botInstance.backoffMs = 0; // Reset backoff
     botInstance.lastError = null;
-    console.log(`[${new Date().toISOString()}] [Bot #${id}] Connected as ${account.user.username}`);
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] ✓ Successfully connected as ${account.user.username}`);
+    console.log(`  User ID: ${account.user.id}`);
+    console.log(`  Discriminator: ${account.user.discriminator || 'None'}`);
   });
 }
 
