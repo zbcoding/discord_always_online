@@ -13,8 +13,8 @@
     },
     "type": "module",
     "dependencies": {
+        "discord.js-selfbot-v13": "^3.4.1",
         "dotenv": "^16.4.1",
-        "eris": "^0.17.2",
         "express": "^5.2.1",
         "node-fetch": "^3.3.1"
     }

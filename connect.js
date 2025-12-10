@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import Eris from 'eris';
+import { Client } from 'discord.js-selfbot-v13';
 import { sendError, sendLowError } from './error.js';
 dotenv.config();
 
@@ -95,28 +95,15 @@ export function initializeBots() {
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    // Create a NEW Eris client instance for each token
-    // This ensures each account has its own independent websocket connection
     
-    // Configure client to appear as...
-    const clientOptions = {
-      restMode: true, // Don't connect to gateway automatically
-      compress: false, // Disable compression
-      // Gateway connection properties to mimic Discord Desktop
-      ws: {
-        properties: {
-          $os: 'Linux',
-          $browser: 'Chrome',
-          $device: 'desktop',
-        }
-      }
-    };
-    
-    const account = new Eris(token, clientOptions);
+    // Create a Discord.js selfbot client for each token
+    const client = new Client({
+      checkUpdate: false,
+    });
 
     botInstances.push({
       id: i,
-      account,
+      client,
       token,
       username: null,
       lastReconnect: null,
@@ -126,7 +113,8 @@ export function initializeBots() {
       lastError: null,
       lastErrorTime: null,
       consecutiveErrors: 0, // Track consecutive errors for backoff
-      backoffMs: 0 // Current backoff delay in ms
+      backoffMs: 0, // Current backoff delay in ms
+      connectionTimeout: null
     });
   }
 
@@ -138,7 +126,7 @@ export function initializeBots() {
 export function getUsername(botId = 0) {
   if (botId >= 0 && botId < botInstances.length) {
     const bot = botInstances[botId];
-    return bot.account.user ? bot.account.user.username : `Bot #${botId}`;
+    return bot.client.user ? bot.client.user.username : `Bot #${botId}`;
   }
   return 'Unknown';
 }
@@ -146,15 +134,15 @@ export function getUsername(botId = 0) {
 // Get all usernames
 export function getAllUsernames() {
   return botInstances.map((bot, index) =>
-    bot.account.user ? bot.account.user.username : `Bot #${index}`
+    bot.client.user ? bot.client.user.username : `Bot #${index}`
   );
 }
 
 // Setup error handlers for a bot instance
 function setupErrorHandlers(botInstance) {
-  const { id, account } = botInstance;
+  const { id, client } = botInstance;
 
-  account.on("error", async (err) => {
+  client.on("error", async (err) => {
     const username = getUsername(id);
     let errorMessage = `Account: ${username} (Bot #${id}) `;
     const errStr = err.toString();
@@ -210,33 +198,14 @@ function setupErrorHandlers(botInstance) {
     }
 
     // Handle specific error codes and types
-    if (err.code === 4003 || err.code === 4004 || errStr.includes("Not authenticated") || errStr.includes("Authentication failed")) {
-      console.log(`  ⚠️  AUTHENTICATION ERROR - Invalid or expired Discord token`);
-      console.log(`     Discord rejected the token (code ${err.code || 'unknown'})`);
+    if (errStr.includes("TOKEN_INVALID") || errStr.includes("Incorrect token") || errStr.includes("401") || errStr.includes("Unauthorized")) {
+      console.log(`  ⚠️  AUTHENTICATION ERROR - Invalid Discord token`);
       console.log(`     Possible causes:`);
       console.log(`       - Token has been revoked/reset`);
-      console.log(`       - Token is for a different account type (user vs bot)`);
       console.log(`       - Token format is incorrect`);
-      errorMessage += `Authentication failed - Discord rejected token (code ${err.code}).\n`;
+      console.log(`       - Account may be locked or disabled`);
+      errorMessage += `Authentication failed - Invalid token.\n`;
       sendError(errorMessage);
-    } else if (errStr.includes("Error: Invalid token") || errStr.includes("401") || errStr.includes("Unauthorized")) {
-      errorMessage += `Invalid or unauthorized token. Check if token is valid and not expired.\n`;
-      console.log(`  ⚠️  This appears to be an authentication error. Verify your token is correct.`);
-      sendError(errorMessage);
-    } else if (
-      errStr.includes(
-        "TypeError: Cannot read properties of undefined (reading 'add')"
-      )
-    ) {
-      console.log(`  ℹ️  Internal Eris error - may indicate connection/auth issue`);
-    } else if (
-      errStr.includes(
-        "TypeError: Cannot read properties of undefined (reading 'get')"
-      )
-    ) {
-      console.log(`  ℹ️  Internal Eris error - may indicate connection/auth issue`);
-    } else if (errStr.includes("Error: Connection reset by peer")) {
-      console.log(`  ℹ️  Connection was reset - network or Discord server issue`);
     } else if (errStr.includes("ECONNREFUSED") || errStr.includes("ENOTFOUND")) {
       console.log(`  ℹ️  Network connection error - check internet connectivity`);
       errorMessage += `Network connection error. ${safeMessage}\n`;
@@ -247,23 +216,22 @@ function setupErrorHandlers(botInstance) {
       sendLowError(errorMessage);
     } else {
       // Unknown error - send to webhook and log full details
-      console.log(`  ⚠️  UNKNOWN ERROR TYPE - Full error object:`);
+      console.log(`  ⚠️  ERROR - Full error object:`);
       console.log(err);
-      errorMessage += `An error occurred in the Discord bot. ${safeMessage}\n`;
+      errorMessage += `An error occurred. ${safeMessage}\n`;
       sendLowError(errorMessage);
     }
     
     console.log(''); // Blank line for readability
   });
 
-  account.on("disconnect", () => {
+  client.on("disconnect", () => {
     botInstance.status = 'disconnected';
-    const reason = arguments[0] || 'Unknown reason';
-    console.log(`[${new Date().toISOString()}] [Bot #${id}] Disconnected - Reason: ${reason}`);
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] Disconnected`);
   });
 
-  account.on("ready", () => {
-    botInstance.username = account.user.username;
+  client.on("ready", () => {
+    botInstance.username = client.user.username;
     botInstance.status = 'connected';
     botInstance.errorCount = 0; // Reset error count on successful connection
     botInstance.consecutiveErrors = 0; // Reset consecutive errors
@@ -276,9 +244,9 @@ function setupErrorHandlers(botInstance) {
       botInstance.connectionTimeout = null;
     }
     
-    console.log(`[${new Date().toISOString()}] [Bot #${id}] ✓ Successfully connected as ${account.user.username}`);
-    console.log(`  User ID: ${account.user.id}`);
-    console.log(`  Discriminator: ${account.user.discriminator || 'None'}`);
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] ✓ Successfully connected as ${client.user.username}`);
+    console.log(`  User ID: ${client.user.id}`);
+    console.log(`  Tag: ${client.user.tag}`);
   });
 }
 
@@ -296,7 +264,11 @@ export function connectAllBots(stagger = true) {
     setTimeout(() => {
       setupErrorHandlers(botInstance);
       botInstance.status = 'connecting';
-      botInstance.account.connect();
+      
+      botInstance.client.login(botInstance.token).catch(err => {
+        console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Login failed:`, err.message);
+      });
+      
       botInstance.lastReconnect = new Date();
       console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Initiating connection${stagger ? ` (delayed ${(delay / 1000).toFixed(1)}s)` : ''}...`);
       
@@ -307,7 +279,6 @@ export function connectAllBots(stagger = true) {
           console.log(`  Status is still 'connecting' - no ready or error event received`);
           console.log(`  This usually indicates:`);
           console.log(`    - Invalid or expired user token`);
-          console.log(`    - User token instead of bot token (user tokens have restrictions)`);
           console.log(`    - Network/firewall blocking Discord WebSocket`);
           console.log(`    - Discord rate limiting the connection attempts`);
           botInstance.status = 'error';
@@ -354,7 +325,11 @@ function attemptConnection(botId) {
   }
 
   botInstance.status = 'connecting';
-  botInstance.account.connect();
+  
+  botInstance.client.login(botInstance.token).catch(err => {
+    console.log(`[${new Date().toISOString()}] [Bot #${botId}] Login failed:`, err.message);
+  });
+  
   botInstance.lastReconnect = new Date();
   console.log(`[${new Date().toISOString()}] [Bot #${botId}] Reconnecting...`);
   
@@ -365,7 +340,6 @@ function attemptConnection(botId) {
       console.log(`  Status is still 'connecting' - no ready or error event received`);
       console.log(`  This usually indicates:`);
       console.log(`    - Invalid or expired user token`);
-      console.log(`    - User token instead of bot token (user tokens have restrictions)`);
       console.log(`    - Network/firewall blocking Discord WebSocket`);
       console.log(`    - Discord rate limiting the connection attempts`);
       botInstance.status = 'error';
