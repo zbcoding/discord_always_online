@@ -5,21 +5,81 @@ dotenv.config();
 
 // Parse tokens from environment variables
 function getTokens() {
-  // Check for new TOKENS format (JSON array)
+  // Check for TOKENS format
   if (process.env.TOKENS) {
-    try {
-      const tokens = JSON.parse(process.env.TOKENS);
-      if (Array.isArray(tokens)) {
+    let tokensStr = process.env.TOKENS.trim();
+    
+    // Handle Coolify/Docker escaped quotes: [\"token1\",\"token2\"] -> ["token1","token2"]
+    if (tokensStr.includes('\\"')) {
+      tokensStr = tokensStr.replace(/\\"/g, '"');
+      console.log('Detected escaped quotes in TOKENS, unescaping...');
+    }
+    
+    // Handle unquoted array format: [token1,token2] -> ["token1","token2"]
+    // Match pattern: starts with [, contains unquoted values separated by commas, ends with ]
+    if (tokensStr.startsWith('[') && tokensStr.endsWith(']') && !tokensStr.includes('"')) {
+      // Extract content between brackets and split by comma
+      const innerContent = tokensStr.slice(1, -1);
+      const tokens = innerContent.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      if (tokens.length > 0) {
+        console.log(`Parsed ${tokens.length} token(s) from TOKENS (unquoted array format)`);
         return tokens;
       }
-      console.warn('TOKENS is not a valid JSON array, falling back to TOKEN');
+    }
+    
+    // Try parsing as JSON array
+    try {
+      const tokens = JSON.parse(tokensStr);
+      if (Array.isArray(tokens) && tokens.length > 0) {
+        console.log(`Parsed ${tokens.length} token(s) from TOKENS (JSON format)`);
+        return tokens;
+      }
+      console.warn('TOKENS is not a valid JSON array or is empty');
     } catch (err) {
-      console.error('Failed to parse TOKENS:', err.message);
+      console.error('Failed to parse TOKENS as JSON:', err.message);
+      
+      // Fallback: try comma-separated format (without brackets/quotes)
+      // e.g., TOKENS=token1,token2,token3
+      if (!tokensStr.startsWith('[')) {
+        const tokens = tokensStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
+        if (tokens.length > 0) {
+          console.log(`Parsed ${tokens.length} token(s) from TOKENS (comma-separated format)`);
+          return tokens;
+        }
+      }
     }
   }
 
   // Fall back to legacy TOKEN format
   if (process.env.TOKEN) {
+    // Also try parsing TOKEN as JSON array (in case user used TOKEN instead of TOKENS)
+    let tokenStr = process.env.TOKEN.trim();
+    if (tokenStr.includes('\\"')) {
+      tokenStr = tokenStr.replace(/\\"/g, '"');
+    }
+    
+    // Handle unquoted array format for TOKEN too
+    if (tokenStr.startsWith('[') && tokenStr.endsWith(']') && !tokenStr.includes('"')) {
+      const innerContent = tokenStr.slice(1, -1);
+      const tokens = innerContent.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      if (tokens.length > 0) {
+        console.log(`Parsed ${tokens.length} token(s) from TOKEN (unquoted array format)`);
+        return tokens;
+      }
+    }
+    
+    if (tokenStr.startsWith('[')) {
+      try {
+        const tokens = JSON.parse(tokenStr);
+        if (Array.isArray(tokens) && tokens.length > 0) {
+          console.log(`Parsed ${tokens.length} token(s) from TOKEN (JSON format)`);
+          return tokens;
+        }
+      } catch (err) {
+        // Not JSON, treat as single token
+      }
+    }
+    console.log('Using single token from TOKEN');
     return [process.env.TOKEN];
   }
 
