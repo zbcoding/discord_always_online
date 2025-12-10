@@ -11,6 +11,7 @@
         "type": "git",
         "url": "git+https://github.com/zbcoding/discord_always_online.git"
     },
+    "type":"module",
     "dependencies": {
         "dotenv": "^16.4.1",
         "eris": "^0.17.1",

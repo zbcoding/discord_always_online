@@ -1,6 +1,8 @@
-require('dotenv').config();
-const express = require("express");
-const { connectBot, getUsername } = require("./connect");
+import dotenv from 'dotenv';
+import express from 'express';
+import { connectBot, getUsername } from './connect.js';
+
+dotenv.config();
 
 // Check if using external cron mode (old way) or internal scheduling (new way)
 const USE_EXTERNAL_CRON = process.env.USE_EXTERNAL_CRON === 'true';

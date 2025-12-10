@@ -1,37 +1,23 @@
-require("dotenv").config();
-const Eris = require("eris");
+import dotenv from 'dotenv';
+import Eris from 'eris';
+import { sendError, sendLowError } from './error.js';
+dotenv.config();
 
 const account = new Eris(process.env["TOKEN"]);
 
 // Export the username
-function getUsername() {
+export function getUsername() {
   return account.user ? account.user.username : undefined;
 }
 
 // Export the connect function
-function connectBot() {
+export function connectBot() {
   account.on("error", async (err) => {
-    let message = "";
+    let errorMessage = `Account: ${getUsername()} `;
     if (err.toString().includes("Error: Invalid token")) {
-      message = `An error occurred in the Discord bot. 
-                  Probably invalid token. 
-                  \n`;
-
-      const webhookURL = process.env["WEBHOOK_URL"];
-
-      const fetch = await import("node-fetch");
-
-      await fetch.default(webhookURL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ content: message }),
-      });
-      console.log("Sent error notification to Discord.");
+      errorMessage += `An error occurred in the Discord bot. Invalid token.\n`;
+      sendError(errorMessage);
     } else if (
-      /*TODO refactor */
-      /*common errors you can choose to ignore*/
       err
         .toString()
         .includes(
@@ -50,28 +36,10 @@ function connectBot() {
     } else if (err.toString().includes("Error: Connection reset by peer")) {
       console.log(`An error occurred in the Discord bot. ${err}`);
     } else {
-      /*other unknown errors can be sent to low importance discord channel*/
-      message = `An error occurred in the Discord bot. ${err}\n`;
-
-      const webhookURL = process.env["WEBHOOK_URL_LOW"];
-
-      const fetch = await import("node-fetch");
-
-      await fetch.default(webhookURL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ content: message }),
-      });
-
-      console.log("Sent error notification to Discord.");
+      /*other unknown errors can be sent to low importance discord webhook*/
+      errorMessage += `An error occurred in the Discord bot. ${err}\n`;
+      sendLowError(errorMessage);
     }
   });
   account.connect();
 }
-
-module.exports = {
-  connectBot,
-  getUsername,
-};
