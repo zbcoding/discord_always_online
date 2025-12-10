@@ -105,7 +105,11 @@ export function initializeBots() {
       token,
       username: null,
       lastReconnect: null,
-      nextReconnect: null
+      nextReconnect: null,
+      status: 'disconnected', // 'connecting' | 'connected' | 'error' | 'disconnected'
+      errorCount: 0,
+      lastError: null,
+      lastErrorTime: null
     });
   }
 
@@ -136,28 +140,31 @@ function setupErrorHandlers(botInstance) {
   account.on("error", async (err) => {
     const username = getUsername(id);
     let errorMessage = `Account: ${username} (Bot #${id}) `;
+    const errStr = err.toString();
 
-    if (err.toString().includes("Error: Invalid token")) {
+    // Track error in bot instance
+    botInstance.errorCount++;
+    botInstance.lastError = errStr;
+    botInstance.lastErrorTime = new Date();
+    botInstance.status = 'error';
+
+    if (errStr.includes("Error: Invalid token")) {
       errorMessage += `An error occurred in the Discord bot. Invalid token.\n`;
       sendError(errorMessage);
     } else if (
-      err
-        .toString()
-        .includes(
-          "TypeError: Cannot read properties of undefined (reading 'add')"
-        )
+      errStr.includes(
+        "TypeError: Cannot read properties of undefined (reading 'add')"
+      )
     ) {
-      console.log(`[Bot #${id}] An error occurred in the Discord bot. ${err}`);
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'add' (error #${botInstance.errorCount})`);
     } else if (
-      err
-        .toString()
-        .includes(
-          "TypeError: Cannot read properties of undefined (reading 'get')"
-        )
+      errStr.includes(
+        "TypeError: Cannot read properties of undefined (reading 'get')"
+      )
     ) {
-      console.log(`[Bot #${id}] An error occurred in the Discord bot. ${err}`);
-    } else if (err.toString().includes("Error: Connection reset by peer")) {
-      console.log(`[Bot #${id}] An error occurred in the Discord bot. ${err}`);
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Error: Cannot read 'get' (error #${botInstance.errorCount})`);
+    } else if (errStr.includes("Error: Connection reset by peer")) {
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Connection reset by peer (error #${botInstance.errorCount})`);
     } else {
       /*other unknown errors can be sent to low importance discord webhook*/
       errorMessage += `An error occurred in the Discord bot. ${err}\n`;
@@ -165,9 +172,17 @@ function setupErrorHandlers(botInstance) {
     }
   });
 
+  account.on("disconnect", () => {
+    botInstance.status = 'disconnected';
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] Disconnected`);
+  });
+
   account.on("ready", () => {
     botInstance.username = account.user.username;
-    console.log(`[Bot #${id}] Connected as ${account.user.username}`);
+    botInstance.status = 'connected';
+    botInstance.errorCount = 0; // Reset error count on successful connection
+    botInstance.lastError = null;
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] Connected as ${account.user.username}`);
   });
 }
 
@@ -184,9 +199,10 @@ export function connectAllBots(stagger = true) {
 
     setTimeout(() => {
       setupErrorHandlers(botInstance);
+      botInstance.status = 'connecting';
       botInstance.account.connect();
       botInstance.lastReconnect = new Date();
-      console.log(`[Bot #${botInstance.id}] Initiating connection${stagger ? ` (delayed ${(delay / 1000).toFixed(1)}s)` : ''}...`);
+      console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Initiating connection${stagger ? ` (delayed ${(delay / 1000).toFixed(1)}s)` : ''}...`);
     }, delay);
   });
 }
@@ -210,9 +226,10 @@ export function connectBot(botId) {
     botInstance.handlersSetup = true;
   }
 
+  botInstance.status = 'connecting';
   botInstance.account.connect();
   botInstance.lastReconnect = new Date();
-  console.log(`[Bot #${botId}] Reconnecting...`);
+  console.log(`[${new Date().toISOString()}] [Bot #${botId}] Reconnecting...`);
 }
 
 // Get bot instances (for external use if needed)

@@ -28,16 +28,36 @@ app.get('/', (req, res) => {
   const accountRows = botInstances.map((bot, i) => {
     const username = bot.account.user ? bot.account.user.username : null;
     let displayName = 'Connecting...';
+    let statusText = bot.status || 'unknown';
 
-    // Partially anonymize username: show first char + "..." + last char
+    // Partially anonymize username: show first char + "..."
     if (username && username.length > 0) {
-      const firstChar = username[0];
+      const firstChar = username[0] || ".";
       const lastChar = username[username.length - 1];
-      displayName = `${firstChar}...${lastChar}`;
+      displayName = `${firstChar}...`;
+    }
+
+    // Determine status color based on actual connection state
+    let statusColor = '#6c757d'; // gray for unknown
+    let statusBadge = '';
+    
+    if (bot.status === 'connected' && bot.errorCount === 0) {
+      statusColor = '#28a745'; // green - healthy
+      statusBadge = '<span style="color: #28a745; font-weight: 500;">✓ Connected</span>';
+    } else if (bot.status === 'connecting') {
+      statusColor = '#ffc107'; // yellow - connecting
+      statusBadge = '<span style="color: #ffc107;">⟳ Connecting...</span>';
+      displayName = 'Connecting...';
+    } else if (bot.status === 'error') {
+      statusColor = '#dc3545'; // red - error
+      statusBadge = `<span style="color: #dc3545;">✗ Error (${bot.errorCount} errors)</span>`;
+    } else if (bot.status === 'disconnected') {
+      statusColor = '#6c757d'; // gray - disconnected
+      statusBadge = '<span style="color: #6c757d;">⊗ Disconnected</span>';
+      displayName = 'Disconnected';
     }
 
     const lastReconnect = bot.lastReconnect ? bot.lastReconnect.toISOString() : 'Never';
-    const statusColor = bot.account.user ? '#28a745' : '#ffc107';
 
     return `
       <tr>
@@ -45,6 +65,7 @@ app.get('/', (req, res) => {
           <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: ${statusColor}; margin-right: 8px;"></span>
           ${displayName}
         </td>
+        <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-size: 0.9em;">${statusBadge}</td>
         <td style="padding: 12px; border-bottom: 1px solid #dee2e6; color: #6c757d; font-size: 0.9em;">${lastReconnect}</td>
       </tr>
     `;
@@ -196,6 +217,7 @@ app.get('/', (req, res) => {
               <thead>
                 <tr>
                   <th>Account</th>
+                  <th>Status</th>
                   <th>Last Reconnect</th>
                 </tr>
               </thead>
@@ -250,7 +272,7 @@ if (USE_INTERNAL_SCHEDULING) {
       scheduleNextReconnect(botId); // Schedule the next reconnection for this bot
     }, randomMs);
 
-    console.log(`Bot #${botId} next reconnection scheduled in ${(randomMs / 60000).toFixed(2)} minutes`);
+    console.log(`[${new Date().toISOString()}] [Bot #${botId}] Next reconnection scheduled in ${(randomMs / 60000).toFixed(2)} minutes`);
   }
 
   // Schedule reconnections for all bots independently
