@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  discord-always-online:
+    build: .
+    container_name: discord-always-online
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - TOKEN=${TOKEN}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - WEBHOOK_URL_LOW=${WEBHOOK_URL_LOW}
+      - PORT=${PORT:-3000}
+      - USE_EXTERNAL_CRON=${USE_EXTERNAL_CRON:-false}
+    env_file:
+      - .env
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # Read-only root filesystem (except for necessary writable paths)
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=10M
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M

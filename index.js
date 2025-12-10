@@ -44,7 +44,7 @@ app.get('/', (req, res) => {
 const port = process.env.PORT || 3000;
 app.listen(port, '0.0.0.0', () => {
   console.log(`Health check server running on port ${port}`);
-  console.log(`Mode: ${USE_EXTERNAL_CRON ? 'External Cron (old way)' : 'Internal Scheduling (new way)'}`);
+  console.log(`Mode: ${USE_EXTERNAL_CRON ? 'External Cron' : 'Internal Scheduling'}`);
 });
 
 // Discord connection logic
