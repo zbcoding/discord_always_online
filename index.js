@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import express from 'express';
+import { Temporal } from '@js-temporal/polyfill';
 import { initializeBots, connectAllBots, connectBot, getAllUsernames, getBotInstances } from './connect.js';
 
 dotenv.config();

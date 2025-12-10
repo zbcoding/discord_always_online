@@ -13,6 +13,7 @@
     },
     "type": "module",
     "dependencies": {
+        "@js-temporal/polyfill": "^0.5.1",
         "discord.js-selfbot-v13": "^3.4.1",
         "dotenv": "^16.4.1",
         "express": "^5.2.1",
