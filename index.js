@@ -30,11 +30,9 @@ app.get('/', (req, res) => {
     let displayName = 'Connecting...';
     let statusText = bot.status || 'unknown';
 
-    // Partially anonymize username: show first char + "..."
+    // Anonymize username: show asterisks matching username length
     if (username && username.length > 0) {
-      const firstChar = username[0] || ".";
-      const lastChar = username[username.length - 1];
-      displayName = `${firstChar}...`;
+      displayName = '*'.repeat(username.length);
     }
 
     // Determine status color based on actual connection state
