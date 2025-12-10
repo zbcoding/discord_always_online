@@ -162,7 +162,18 @@ function setupErrorHandlers(botInstance) {
     // Log full error details for debugging
     console.log(`[${new Date().toISOString()}] [Bot #${id}] ERROR DETAILS:`);
     console.log(`  Error type: ${err.name || 'Unknown'}`);
-    console.log(`  Error message: ${err.message || errStr}`);
+    
+    // Mask token in error message if present
+    let safeMessage = err.message || errStr;
+    if (safeMessage.includes(botInstance.token)) {
+      const token = botInstance.token;
+      const maskedToken = token.length > 12 
+        ? `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
+        : '***MASKED***';
+      safeMessage = safeMessage.replace(new RegExp(token, 'g'), maskedToken);
+    }
+    
+    console.log(`  Error message: ${safeMessage}`);
     console.log(`  Error count: ${botInstance.errorCount}, consecutive: ${botInstance.consecutiveErrors}`);
     console.log(`  Next retry backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s`);
     
@@ -170,14 +181,30 @@ function setupErrorHandlers(botInstance) {
       console.log(`  Error code: ${err.code}`);
     }
     
-    // Show stack trace for debugging (first 3 lines)
+    // Show stack trace for debugging (first 3 lines, with tokens masked)
     if (err.stack) {
-      const stackLines = err.stack.split('\n').slice(0, 3).join('\n');
+      let stackLines = err.stack.split('\n').slice(0, 3).join('\n');
+      if (stackLines.includes(botInstance.token)) {
+        const token = botInstance.token;
+        const maskedToken = token.length > 12 
+          ? `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
+          : '***MASKED***';
+        stackLines = stackLines.replace(new RegExp(token, 'g'), maskedToken);
+      }
       console.log(`  Stack trace:\n${stackLines}`);
     }
 
-    // Handle specific error types
-    if (errStr.includes("Error: Invalid token") || errStr.includes("401") || errStr.includes("Unauthorized")) {
+    // Handle specific error codes and types
+    if (err.code === 4003 || err.code === 4004 || errStr.includes("Not authenticated") || errStr.includes("Authentication failed")) {
+      console.log(`  ⚠️  AUTHENTICATION ERROR - Invalid or expired Discord token`);
+      console.log(`     Discord rejected the token (code ${err.code || 'unknown'})`);
+      console.log(`     Possible causes:`);
+      console.log(`       - Token has been revoked/reset`);
+      console.log(`       - Token is for a different account type (user vs bot)`);
+      console.log(`       - Token format is incorrect`);
+      errorMessage += `Authentication failed - Discord rejected token (code ${err.code}).\n`;
+      sendError(errorMessage);
+    } else if (errStr.includes("Error: Invalid token") || errStr.includes("401") || errStr.includes("Unauthorized")) {
       errorMessage += `Invalid or unauthorized token. Check if token is valid and not expired.\n`;
       console.log(`  ⚠️  This appears to be an authentication error. Verify your token is correct.`);
       sendError(errorMessage);
@@ -197,17 +224,17 @@ function setupErrorHandlers(botInstance) {
       console.log(`  ℹ️  Connection was reset - network or Discord server issue`);
     } else if (errStr.includes("ECONNREFUSED") || errStr.includes("ENOTFOUND")) {
       console.log(`  ℹ️  Network connection error - check internet connectivity`);
-      errorMessage += `Network connection error. ${err}\n`;
+      errorMessage += `Network connection error. ${safeMessage}\n`;
       sendLowError(errorMessage);
     } else if (errStr.includes("429") || errStr.includes("rate limit")) {
       console.log(`  ⚠️  RATE LIMITED by Discord - backing off`);
-      errorMessage += `Rate limited by Discord. ${err}\n`;
+      errorMessage += `Rate limited by Discord. ${safeMessage}\n`;
       sendLowError(errorMessage);
     } else {
       // Unknown error - send to webhook and log full details
       console.log(`  ⚠️  UNKNOWN ERROR TYPE - Full error object:`);
       console.log(err);
-      errorMessage += `An error occurred in the Discord bot. ${err}\n`;
+      errorMessage += `An error occurred in the Discord bot. ${safeMessage}\n`;
       sendLowError(errorMessage);
     }
     
@@ -227,6 +254,13 @@ function setupErrorHandlers(botInstance) {
     botInstance.consecutiveErrors = 0; // Reset consecutive errors
     botInstance.backoffMs = 0; // Reset backoff
     botInstance.lastError = null;
+    
+    // Clear connection timeout if it exists
+    if (botInstance.connectionTimeout) {
+      clearTimeout(botInstance.connectionTimeout);
+      botInstance.connectionTimeout = null;
+    }
+    
     console.log(`[${new Date().toISOString()}] [Bot #${id}] ✓ Successfully connected as ${account.user.username}`);
     console.log(`  User ID: ${account.user.id}`);
     console.log(`  Discriminator: ${account.user.discriminator || 'None'}`);
@@ -250,6 +284,21 @@ export function connectAllBots(stagger = true) {
       botInstance.account.connect();
       botInstance.lastReconnect = new Date();
       console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Initiating connection${stagger ? ` (delayed ${(delay / 1000).toFixed(1)}s)` : ''}...`);
+      
+      // Set timeout to detect hanging connections (60 seconds)
+      botInstance.connectionTimeout = setTimeout(() => {
+        if (botInstance.status === 'connecting') {
+          console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] ⚠️  WARNING: Connection timeout after 60s`);
+          console.log(`  Status is still 'connecting' - no ready or error event received`);
+          console.log(`  This usually indicates:`);
+          console.log(`    - Invalid or expired user token`);
+          console.log(`    - User token instead of bot token (user tokens have restrictions)`);
+          console.log(`    - Network/firewall blocking Discord WebSocket`);
+          console.log(`    - Discord rate limiting the connection attempts`);
+          botInstance.status = 'error';
+          botInstance.lastError = 'Connection timeout - no response from Discord';
+        }
+      }, 60000); // 60 seconds
     }, delay);
   });
 }
@@ -293,6 +342,21 @@ function attemptConnection(botId) {
   botInstance.account.connect();
   botInstance.lastReconnect = new Date();
   console.log(`[${new Date().toISOString()}] [Bot #${botId}] Reconnecting...`);
+  
+  // Set timeout to detect hanging connections (60 seconds)
+  botInstance.connectionTimeout = setTimeout(() => {
+    if (botInstance.status === 'connecting') {
+      console.log(`[${new Date().toISOString()}] [Bot #${botId}] ⚠️  WARNING: Connection timeout after 60s`);
+      console.log(`  Status is still 'connecting' - no ready or error event received`);
+      console.log(`  This usually indicates:`);
+      console.log(`    - Invalid or expired user token`);
+      console.log(`    - User token instead of bot token (user tokens have restrictions)`);
+      console.log(`    - Network/firewall blocking Discord WebSocket`);
+      console.log(`    - Discord rate limiting the connection attempts`);
+      botInstance.status = 'error';
+      botInstance.lastError = 'Connection timeout - no response from Discord';
+    }
+  }, 60000); // 60 seconds
 }
 
 // Get bot instances (for external use if needed)
