@@ -18,32 +18,203 @@ app.get('/', (req, res) => {
   const uptime = process.uptime();
   const mode = USE_INTERNAL_SCHEDULING ? 'Internal Scheduling' : 'External Cron';
 
-  // Build detailed account list
-  const accountList = botInstances.map((bot, i) => {
-    const name = bot.account.user ? bot.account.user.username : `Bot #${i}`;
-    const lastReconnect = bot.lastReconnect ? bot.lastReconnect.toISOString() : 'Never';
-
-    return `    ${i + 1}. ${name}
-       Last: ${lastReconnect}`;
-  }).join('\n\n');
-
   // In external cron mode, trigger reconnection when this endpoint is hit
   if (!USE_INTERNAL_SCHEDULING) {
     console.log("External cron ping received - triggering reconnection");
     connectAllBots(true); // Stagger the reconnections
   }
 
-  res.send(`
-    Discord Always Online - Health Check
+  // Build HTML account rows
+  const accountRows = botInstances.map((bot, i) => {
+    const username = bot.account.user ? bot.account.user.username : null;
+    let displayName = 'Connecting...';
 
-    Accounts (${usernames.length}):
-${accountList}
+    // Partially anonymize username: show first char + "..." + last char
+    if (username && username.length > 0) {
+      const firstChar = username[0];
+      const lastChar = username[username.length - 1];
+      displayName = `${firstChar}...${lastChar}`;
+    }
 
-    Status: Running
-    Mode: ${mode}
-    Uptime: ${Math.floor(uptime / 60)} minutes
-    Current Time: ${now.toISOString()}
-  `);
+    const lastReconnect = bot.lastReconnect ? bot.lastReconnect.toISOString() : 'Never';
+    const statusColor = bot.account.user ? '#28a745' : '#ffc107';
+
+    return `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: ${statusColor}; margin-right: 8px;"></span>
+          ${displayName}
+        </td>
+        <td style="padding: 12px; border-bottom: 1px solid #dee2e6; color: #6c757d; font-size: 0.9em;">${lastReconnect}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Discord Always Online - Health Check</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+        .container {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+          max-width: 800px;
+          width: 100%;
+          overflow: hidden;
+        }
+        .header {
+          background: linear-gradient(135deg, #5865f2 0%, #7289da 100%);
+          color: white;
+          padding: 30px;
+          text-align: center;
+        }
+        .header h1 {
+          font-size: 28px;
+          margin-bottom: 8px;
+        }
+        .header p {
+          opacity: 0.9;
+          font-size: 14px;
+        }
+        .content {
+          padding: 30px;
+        }
+        .info-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 20px;
+          margin-bottom: 30px;
+        }
+        .info-card {
+          background: #f8f9fa;
+          padding: 20px;
+          border-radius: 8px;
+          border-left: 4px solid #5865f2;
+        }
+        .info-card h3 {
+          font-size: 12px;
+          text-transform: uppercase;
+          color: #6c757d;
+          margin-bottom: 8px;
+          font-weight: 600;
+        }
+        .info-card p {
+          font-size: 20px;
+          color: #212529;
+          font-weight: 500;
+        }
+        .accounts-section h2 {
+          font-size: 18px;
+          margin-bottom: 16px;
+          color: #212529;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          background: white;
+          border-radius: 8px;
+          overflow: hidden;
+          border: 1px solid #dee2e6;
+        }
+        thead {
+          background: #f8f9fa;
+        }
+        th {
+          padding: 12px;
+          text-align: left;
+          font-size: 12px;
+          text-transform: uppercase;
+          color: #6c757d;
+          font-weight: 600;
+          border-bottom: 2px solid #dee2e6;
+        }
+        .footer {
+          background: #f8f9fa;
+          padding: 20px 30px;
+          text-align: center;
+          color: #6c757d;
+          font-size: 12px;
+          border-top: 1px solid #dee2e6;
+        }
+        .status-badge {
+          display: inline-block;
+          padding: 4px 12px;
+          border-radius: 12px;
+          font-size: 14px;
+          font-weight: 500;
+        }
+        .status-running {
+          background: #d4edda;
+          color: #155724;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🟢 Discord Always Online</h1>
+          <p>Health Check Dashboard</p>
+        </div>
+
+        <div class="content">
+          <div class="info-grid">
+            <div class="info-card">
+              <h3>Status</h3>
+              <p><span class="status-badge status-running">Running</span></p>
+            </div>
+            <div class="info-card">
+              <h3>Mode</h3>
+              <p>${mode}</p>
+            </div>
+            <div class="info-card">
+              <h3>Uptime</h3>
+              <p>${Math.floor(uptime / 60)} min</p>
+            </div>
+            <div class="info-card">
+              <h3>Accounts</h3>
+              <p>${usernames.length}</p>
+            </div>
+          </div>
+
+          <div class="accounts-section">
+            <h2>Active Accounts</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Last Reconnect</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${accountRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="footer">
+          Current Time: ${now.toISOString()}
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  res.send(html);
 });
 
 const port = process.env.PORT || 3000;
