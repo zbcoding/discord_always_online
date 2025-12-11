@@ -24,8 +24,9 @@ USER nodejs
 # Expose port (default 3000, can be overridden with PORT env var)
 EXPOSE 3000
 
-# Health checks are handled by the deployment platform (Railway, Coolify, etc.)
-# The app exposes a health endpoint at GET / that returns HTML status page
+# Health check - verify the app is responding on port 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 # Start the application
 CMD ["node", "index.js"]
