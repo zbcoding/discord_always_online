@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { Client } from 'discord.js-selfbot-v13';
-import { sendError, sendLowError } from './error.js';
+import { sendError, sendLowError, sendInfo } from './error.js';
 dotenv.config();
 
 // Parse tokens from environment variables
@@ -8,13 +8,13 @@ function getTokens() {
   // Check for TOKENS format
   if (process.env.TOKENS) {
     let tokensStr = process.env.TOKENS.trim();
-    
+
     // Handle Coolify/Docker escaped quotes: [\"token1\",\"token2\"] -> ["token1","token2"]
     if (tokensStr.includes('\\"')) {
       tokensStr = tokensStr.replace(/\\"/g, '"');
       console.log('Detected escaped quotes in TOKENS, unescaping...');
     }
-    
+
     // Handle unquoted array format: [token1,token2] -> ["token1","token2"]
     // Match pattern: starts with [, contains unquoted values separated by commas, ends with ]
     if (tokensStr.startsWith('[') && tokensStr.endsWith(']') && !tokensStr.includes('"')) {
@@ -26,7 +26,7 @@ function getTokens() {
         return tokens;
       }
     }
-    
+
     // Try parsing as JSON array
     try {
       const tokens = JSON.parse(tokensStr);
@@ -37,7 +37,7 @@ function getTokens() {
       console.warn('TOKENS is not a valid JSON array or is empty');
     } catch (err) {
       console.error('Failed to parse TOKENS as JSON:', err.message);
-      
+
       // Fallback: try comma-separated format (without brackets/quotes)
       // e.g., TOKENS=token1,token2,token3
       if (!tokensStr.startsWith('[')) {
@@ -57,7 +57,7 @@ function getTokens() {
     if (tokenStr.includes('\\"')) {
       tokenStr = tokenStr.replace(/\\"/g, '"');
     }
-    
+
     // Handle unquoted array format for TOKEN too
     if (tokenStr.startsWith('[') && tokenStr.endsWith(']') && !tokenStr.includes('"')) {
       const innerContent = tokenStr.slice(1, -1);
@@ -67,7 +67,7 @@ function getTokens() {
         return tokens;
       }
     }
-    
+
     if (tokenStr.startsWith('[')) {
       try {
         const tokens = JSON.parse(tokenStr);
@@ -95,7 +95,7 @@ export function initializeBots() {
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    
+
     // Create a Discord.js selfbot client for each token
     const client = new Client({
       checkUpdate: false,
@@ -110,11 +110,15 @@ export function initializeBots() {
       nextReconnect: null,
       status: 'disconnected', // 'connecting' | 'connected' | 'error' | 'disconnected'
       errorCount: 0,
+      totalErrorCount: 0,
       lastError: null,
       lastErrorTime: null,
       consecutiveErrors: 0, // Track consecutive errors for backoff
       backoffMs: 0, // Current backoff delay in ms
-      connectionTimeout: null
+      connectionTimeout: null,
+      statusTimeout: null,
+      handlersSetup: false,
+      firstConnect: true,
     });
   }
 
@@ -138,7 +142,21 @@ export function getAllUsernames() {
   );
 }
 
-// Setup error handlers for a bot instance
+// Mask token for safe logging
+function maskToken(token) {
+  if (!token) return '***MASKED***';
+  return token.length > 12
+    ? `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
+    : '***MASKED***';
+}
+
+// Mask token occurrences in a string
+function maskTokenInString(str, token) {
+  if (!str || !token || !str.includes(token)) return str;
+  return str.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), maskToken(token));
+}
+
+// Setup error handlers for a bot instance (called once per bot)
 function setupErrorHandlers(botInstance) {
   const { id, client } = botInstance;
 
@@ -149,11 +167,12 @@ function setupErrorHandlers(botInstance) {
 
     // Track error in bot instance
     botInstance.errorCount++;
+    botInstance.totalErrorCount++;
     botInstance.consecutiveErrors++;
     botInstance.lastError = errStr;
     botInstance.lastErrorTime = new Date();
     botInstance.status = 'error';
-    
+
     // Calculate exponential backoff: 30s, 60s, 120s, 240s, etc. (capped at 5 min)
     const baseBackoff = 30000; // 30 seconds
     const maxBackoff = 300000; // 5 minutes
@@ -165,41 +184,30 @@ function setupErrorHandlers(botInstance) {
     // Log full error details for debugging
     console.log(`[${new Date().toISOString()}] [Bot #${id}] ERROR DETAILS:`);
     console.log(`  Error type: ${err.name || 'Unknown'}`);
-    
+
     // Mask token in error message if present
-    let safeMessage = err.message || errStr;
-    if (safeMessage.includes(botInstance.token)) {
-      const token = botInstance.token;
-      const maskedToken = token.length > 12 
-        ? `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
-        : '***MASKED***';
-      safeMessage = safeMessage.replace(new RegExp(token, 'g'), maskedToken);
-    }
-    
+    const safeMessage = maskTokenInString(err.message || errStr, botInstance.token);
+
     console.log(`  Error message: ${safeMessage}`);
-    console.log(`  Error count: ${botInstance.errorCount}, consecutive: ${botInstance.consecutiveErrors}`);
+    console.log(`  Error count: ${botInstance.errorCount}, consecutive: ${botInstance.consecutiveErrors}, total: ${botInstance.totalErrorCount}`);
     console.log(`  Next retry backoff: ${(botInstance.backoffMs/1000).toFixed(0)}s`);
-    
+
     if (err.code) {
       console.log(`  Error code: ${err.code}`);
     }
-    
+
     // Show stack trace for debugging (first 3 lines, with tokens masked)
     if (err.stack) {
-      let stackLines = err.stack.split('\n').slice(0, 3).join('\n');
-      if (stackLines.includes(botInstance.token)) {
-        const token = botInstance.token;
-        const maskedToken = token.length > 12 
-          ? `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
-          : '***MASKED***';
-        stackLines = stackLines.replace(new RegExp(token, 'g'), maskedToken);
-      }
+      const stackLines = maskTokenInString(
+        err.stack.split('\n').slice(0, 3).join('\n'),
+        botInstance.token
+      );
       console.log(`  Stack trace:\n${stackLines}`);
     }
 
     // Handle specific error codes and types
     if (errStr.includes("TOKEN_INVALID") || errStr.includes("Incorrect token") || errStr.includes("401") || errStr.includes("Unauthorized")) {
-      console.log(`  ⚠️  AUTHENTICATION ERROR - Invalid Discord token`);
+      console.log(`  AUTHENTICATION ERROR - Invalid Discord token`);
       console.log(`     Possible causes:`);
       console.log(`       - Token has been revoked/reset`);
       console.log(`       - Token format is incorrect`);
@@ -207,21 +215,21 @@ function setupErrorHandlers(botInstance) {
       errorMessage += `Authentication failed - Invalid token.\n`;
       sendError(errorMessage);
     } else if (errStr.includes("ECONNREFUSED") || errStr.includes("ENOTFOUND")) {
-      console.log(`  ℹ️  Network connection error - check internet connectivity`);
+      console.log(`  Network connection error - check internet connectivity`);
       errorMessage += `Network connection error. ${safeMessage}\n`;
       sendLowError(errorMessage);
     } else if (errStr.includes("429") || errStr.includes("rate limit")) {
-      console.log(`  ⚠️  RATE LIMITED by Discord - backing off`);
+      console.log(`  RATE LIMITED by Discord - backing off`);
       errorMessage += `Rate limited by Discord. ${safeMessage}\n`;
       sendLowError(errorMessage);
     } else {
       // Unknown error - send to webhook and log full details
-      console.log(`  ⚠️  ERROR - Full error object:`);
+      console.log(`  ERROR - Full error object:`);
       console.log(err);
       errorMessage += `An error occurred. ${safeMessage}\n`;
       sendLowError(errorMessage);
     }
-    
+
     console.log(''); // Blank line for readability
   });
 
@@ -230,24 +238,52 @@ function setupErrorHandlers(botInstance) {
     console.log(`[${new Date().toISOString()}] [Bot #${id}] Disconnected`);
   });
 
+  // Monitor presence changes to detect if status goes idle
+  client.on('presenceUpdate', (oldPresence, newPresence) => {
+    if (!client.user || newPresence.userId !== client.user.id) return;
+    const newStatus = newPresence.status;
+
+    if (newStatus === 'idle' || newStatus === 'dnd') {
+      console.log(`[${new Date().toISOString()}] [Bot #${id}] Status changed to ${newStatus.toUpperCase()}, will return to online`);
+
+      const randomDelay = (Math.random() * 5 + 5) * 1000;
+      setTimeout(() => {
+        if (client.user) {
+          try {
+            client.user.setStatus('online');
+            console.log(`[${new Date().toISOString()}] [Bot #${id}] Returned status to ONLINE after ${(randomDelay/1000).toFixed(1)}s`);
+          } catch (err) {
+            console.log(`[${new Date().toISOString()}] [Bot #${id}] Failed to return to online:`, err.message);
+          }
+        }
+      }, randomDelay);
+    }
+  });
+
   client.on("ready", () => {
     botInstance.username = client.user.username;
     botInstance.status = 'connected';
-    botInstance.errorCount = 0; // Reset error count on successful connection
-    botInstance.consecutiveErrors = 0; // Reset consecutive errors
-    botInstance.backoffMs = 0; // Reset backoff
+    botInstance.errorCount = 0;
+    botInstance.consecutiveErrors = 0;
+    botInstance.backoffMs = 0;
     botInstance.lastError = null;
-    
+
     // Clear connection timeout if it exists
     if (botInstance.connectionTimeout) {
       clearTimeout(botInstance.connectionTimeout);
       botInstance.connectionTimeout = null;
     }
-    
-    console.log(`[${new Date().toISOString()}] [Bot #${id}] ✓ Successfully connected as ${client.user.username}`);
+
+    console.log(`[${new Date().toISOString()}] [Bot #${id}] Successfully connected as ${client.user.username}`);
     console.log(`  User ID: ${client.user.id}`);
     console.log(`  Tag: ${client.user.tag}`);
-    
+
+    // Send startup notification on first successful connect
+    if (botInstance.firstConnect) {
+      botInstance.firstConnect = false;
+      sendInfo(`Bot #${id} connected successfully as ${client.user.username}`);
+    }
+
     // Set status to online
     try {
       client.user.setStatus('online');
@@ -255,64 +291,35 @@ function setupErrorHandlers(botInstance) {
     } catch (err) {
       console.log(`[${new Date().toISOString()}] [Bot #${id}] Failed to set status:`, err.message);
     }
-    
+
     // Schedule status refreshes with randomized timing (3-7 minutes)
-    // This prevents Discord from marking the account as idle/away
-    // Randomized intervals make it less predictable and more natural
     function scheduleStatusRefresh() {
       if (botInstance.statusTimeout) {
         clearTimeout(botInstance.statusTimeout);
       }
-      
-      // Random interval between 3-7 minutes
+
       const minMinutes = 3;
       const maxMinutes = 7;
       const randomMs = (Math.random() * (maxMinutes - minMinutes) + minMinutes) * 60 * 1000;
-      
+
       botInstance.statusTimeout = setTimeout(() => {
         if (client.user) {
           try {
             client.user.setStatus('online');
-            console.log(`[${new Date().toISOString()}] [Bot #${id}] Status refreshed (keeping online, next in ${((Math.random() * (maxMinutes - minMinutes) + minMinutes)).toFixed(1)}m)`);
-            scheduleStatusRefresh(); // Schedule next refresh
+            console.log(`[${new Date().toISOString()}] [Bot #${id}] Status refreshed`);
+            scheduleStatusRefresh();
           } catch (err) {
             console.log(`[${new Date().toISOString()}] [Bot #${id}] Status refresh failed:`, err.message);
-            scheduleStatusRefresh(); // Try again
+            scheduleStatusRefresh();
           }
         }
       }, randomMs);
     }
-    
-    scheduleStatusRefresh(); // Start the randomized refresh cycle
-    
-    // ADDITION: Monitor presence changes to detect if status goes idle
-    // If it does, wait 5-10 seconds then set back to online (like coming back to PC)
-    client.on('presenceUpdate', (oldPresence, newPresence) => {
-      // Only monitor our own user's presence
-      if (newPresence.userId === client.user.id) {
-        const newStatus = newPresence.status;
-        
-        // If status changed to idle or dnd, schedule return to online
-        if (newStatus === 'idle' || newStatus === 'dnd') {
-          console.log(`[${new Date().toISOString()}] [Bot #${id}] Status changed to ${newStatus.toUpperCase()}, will return to online`);
-          
-          // Random delay between 5-10 seconds
-          const randomDelay = (Math.random() * 5 + 5) * 1000;
-          
-          setTimeout(() => {
-            if (client.user) {
-              try {
-                client.user.setStatus('online');
-                console.log(`[${new Date().toISOString()}] [Bot #${id}] Returned status to ONLINE after ${(randomDelay/1000).toFixed(1)}s`);
-              } catch (err) {
-                console.log(`[${new Date().toISOString()}] [Bot #${id}] Failed to return to online:`, err.message);
-              }
-            }
-          }, randomDelay);
-        }
-      }
-    });
+
+    scheduleStatusRefresh();
   });
+
+  botInstance.handlersSetup = true;
 }
 
 // Connect all bots with staggered timing
@@ -324,23 +331,46 @@ export function connectAllBots(stagger = true) {
   console.log(`Connecting ${botInstances.length} bot(s)${stagger ? ' with staggered timing' : ''}...`);
 
   botInstances.forEach((botInstance, index) => {
-    const delay = stagger ? index * getRandomDelay(5000, 15000) : 0; // 5-15 seconds between each
+    // Skip bots that are already connected
+    if (botInstance.status === 'connected') {
+      console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Already connected, skipping`);
+      return;
+    }
+
+    const delay = stagger ? index * getRandomDelay(5000, 15000) : 0;
 
     setTimeout(() => {
-      setupErrorHandlers(botInstance);
+      // Only setup error handlers once per bot
+      if (!botInstance.handlersSetup) {
+        setupErrorHandlers(botInstance);
+      }
+
       botInstance.status = 'connecting';
-      
+
       botInstance.client.login(botInstance.token).catch(err => {
-        console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Login failed:`, err.message);
+        const safeMessage = maskTokenInString(err.message, botInstance.token);
+        console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Login failed:`, safeMessage);
+        botInstance.status = 'error';
+        botInstance.lastError = safeMessage;
+        botInstance.lastErrorTime = new Date();
+        botInstance.errorCount++;
+        botInstance.totalErrorCount++;
+        botInstance.consecutiveErrors++;
+        sendError(`Bot #${botInstance.id} login failed: ${safeMessage}`);
       });
-      
+
       botInstance.lastReconnect = new Date();
       console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Initiating connection${stagger ? ` (delayed ${(delay / 1000).toFixed(1)}s)` : ''}...`);
-      
+
+      // Clear any existing connection timeout
+      if (botInstance.connectionTimeout) {
+        clearTimeout(botInstance.connectionTimeout);
+      }
+
       // Set timeout to detect hanging connections (60 seconds)
       botInstance.connectionTimeout = setTimeout(() => {
         if (botInstance.status === 'connecting') {
-          console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] ⚠️  WARNING: Connection timeout after 60s`);
+          console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] WARNING: Connection timeout after 60s`);
           console.log(`  Status is still 'connecting' - no ready or error event received`);
           console.log(`  This usually indicates:`);
           console.log(`    - Invalid or expired user token`);
@@ -348,8 +378,13 @@ export function connectAllBots(stagger = true) {
           console.log(`    - Discord rate limiting the connection attempts`);
           botInstance.status = 'error';
           botInstance.lastError = 'Connection timeout - no response from Discord';
+          botInstance.lastErrorTime = new Date();
+          botInstance.errorCount++;
+          botInstance.totalErrorCount++;
+          botInstance.consecutiveErrors++;
+          sendError(`Bot #${botInstance.id} connection timed out after 60s - likely invalid/expired token`);
         }
-      }, 60000); // 60 seconds
+      }, 60000);
     }, delay);
   });
 }
@@ -366,7 +401,7 @@ export function connectBot(botId) {
   }
 
   const botInstance = botInstances[botId];
-  
+
   // Check if we should apply backoff delay
   if (botInstance.backoffMs > 0 && botInstance.status === 'error') {
     console.log(`[${new Date().toISOString()}] [Bot #${botId}] Delaying reconnection by ${(botInstance.backoffMs/1000).toFixed(0)}s due to errors`);
@@ -375,7 +410,7 @@ export function connectBot(botId) {
     }, botInstance.backoffMs);
     return;
   }
-  
+
   attemptConnection(botId);
 }
 
@@ -383,25 +418,36 @@ export function connectBot(botId) {
 function attemptConnection(botId) {
   const botInstance = botInstances[botId];
 
-  // Only setup error handlers if not already set up
   if (!botInstance.handlersSetup) {
     setupErrorHandlers(botInstance);
-    botInstance.handlersSetup = true;
   }
 
   botInstance.status = 'connecting';
-  
+
   botInstance.client.login(botInstance.token).catch(err => {
-    console.log(`[${new Date().toISOString()}] [Bot #${botId}] Login failed:`, err.message);
+    const safeMessage = maskTokenInString(err.message, botInstance.token);
+    console.log(`[${new Date().toISOString()}] [Bot #${botId}] Login failed:`, safeMessage);
+    botInstance.status = 'error';
+    botInstance.lastError = safeMessage;
+    botInstance.lastErrorTime = new Date();
+    botInstance.errorCount++;
+    botInstance.totalErrorCount++;
+    botInstance.consecutiveErrors++;
+    sendError(`Bot #${botId} login failed: ${safeMessage}`);
   });
-  
+
   botInstance.lastReconnect = new Date();
   console.log(`[${new Date().toISOString()}] [Bot #${botId}] Reconnecting...`);
-  
+
+  // Clear any existing connection timeout
+  if (botInstance.connectionTimeout) {
+    clearTimeout(botInstance.connectionTimeout);
+  }
+
   // Set timeout to detect hanging connections (60 seconds)
   botInstance.connectionTimeout = setTimeout(() => {
     if (botInstance.status === 'connecting') {
-      console.log(`[${new Date().toISOString()}] [Bot #${botId}] ⚠️  WARNING: Connection timeout after 60s`);
+      console.log(`[${new Date().toISOString()}] [Bot #${botId}] WARNING: Connection timeout after 60s`);
       console.log(`  Status is still 'connecting' - no ready or error event received`);
       console.log(`  This usually indicates:`);
       console.log(`    - Invalid or expired user token`);
@@ -409,8 +455,35 @@ function attemptConnection(botId) {
       console.log(`    - Discord rate limiting the connection attempts`);
       botInstance.status = 'error';
       botInstance.lastError = 'Connection timeout - no response from Discord';
+      botInstance.lastErrorTime = new Date();
+      botInstance.errorCount++;
+      botInstance.totalErrorCount++;
+      botInstance.consecutiveErrors++;
+      sendError(`Bot #${botId} connection timed out after 60s - likely invalid/expired token`);
     }
-  }, 60000); // 60 seconds
+  }, 60000);
+}
+
+// Graceful shutdown - destroy all clients and clear timers
+export function shutdownAllBots() {
+  console.log(`[${new Date().toISOString()}] Shutting down ${botInstances.length} bot(s)...`);
+  for (const bot of botInstances) {
+    if (bot.connectionTimeout) {
+      clearTimeout(bot.connectionTimeout);
+      bot.connectionTimeout = null;
+    }
+    if (bot.statusTimeout) {
+      clearTimeout(bot.statusTimeout);
+      bot.statusTimeout = null;
+    }
+    try {
+      bot.client.destroy();
+      bot.status = 'disconnected';
+      console.log(`[${new Date().toISOString()}] [Bot #${bot.id}] Destroyed`);
+    } catch (err) {
+      console.log(`[${new Date().toISOString()}] [Bot #${bot.id}] Error during shutdown:`, err.message);
+    }
+  }
 }
 
 // Get bot instances (for external use if needed)

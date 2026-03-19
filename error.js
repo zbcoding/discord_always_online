@@ -4,7 +4,7 @@ import fetch from 'node-fetch';
  * Send a notification to Discord webhook
  * @param {string} webhookURL - Discord webhook URL
  * @param {string} message - Message to send
- * @param {string} level - Error level for logging (e.g., 'error', 'low')
+ * @param {string} level - Error level for logging (e.g., 'error', 'low', 'info')
  */
 async function sendWebhookNotification(webhookURL, message, level = 'error') {
   if (!webhookURL) {
@@ -42,4 +42,14 @@ export async function sendError(errorMessage) {
 export async function sendLowError(lowErrorMessage) {
   const webhookURL = process.env.WEBHOOK_URL_LOW;
   await sendWebhookNotification(webhookURL, lowErrorMessage, 'low');
+}
+
+/**
+ * Send informational notification to Discord (startup, reconnect success, etc.)
+ * Uses the low-priority webhook to avoid competing with real error alerts
+ * @param {string} infoMessage - Info message to send
+ */
+export async function sendInfo(infoMessage) {
+  const webhookURL = process.env.WEBHOOK_URL_LOW || process.env.WEBHOOK_URL;
+  await sendWebhookNotification(webhookURL, infoMessage, 'info');
 }

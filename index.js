@@ -1,90 +1,169 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import { Temporal } from '@js-temporal/polyfill';
-import { initializeBots, connectAllBots, connectBot, getAllUsernames, getBotInstances } from './connect.js';
+import { initializeBots, connectAllBots, connectBot, getAllUsernames, getBotInstances, shutdownAllBots } from './connect.js';
 
 dotenv.config();
 
 // Check if using internal scheduling mode (opt-in) or external cron mode (default)
 const USE_INTERNAL_SCHEDULING = process.env.USE_INTERNAL_SCHEDULING === 'true';
 
+// Dashboard password for revealing first 5 chars of account names
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
+
+// Rate limiting for the health endpoint
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max requests per window
+const rateLimitMap = new Map();
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { windowStart: now, count: 1 });
+    return true;
+  }
+
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+  return true;
+}
+
+// Clean up stale rate limit entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, RATE_LIMIT_WINDOW_MS);
+
+// HTML-escape to prevent XSS from usernames or error messages
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Format uptime using Temporal API
+function formatUptime(seconds) {
+  const start = Temporal.PlainDateTime.from("1970-01-01T00:00");
+  const end = start.add({ seconds: Math.floor(seconds) });
+  const diff = start.until(end, { largestUnit: "months" });
+
+  const parts = [];
+  if (diff.months > 0) parts.push(`${diff.months} month${diff.months !== 1 ? 's' : ''}`);
+  if (diff.days > 0) parts.push(`${diff.days} day${diff.days !== 1 ? 's' : ''}`);
+  if (diff.hours > 0) parts.push(`${diff.hours} hour${diff.hours !== 1 ? 's' : ''}`);
+  if (diff.minutes > 0) parts.push(`${diff.minutes} min`);
+
+  return parts.length > 0 ? parts.join(', ') : '0 min';
+}
+
 // Health check server
 const app = express();
 
-app.get('/favicon.ico', (req, res) => res.status(204));
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/', (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress;
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).send('Too Many Requests. Try again later.');
+  }
+
   const usernames = getAllUsernames();
   const botInstances = getBotInstances();
   const now = new Date();
   const uptime = process.uptime();
   const mode = USE_INTERNAL_SCHEDULING ? 'Internal Scheduling' : 'External Cron';
-
-  // Format uptime using Temporal API (accounts for leap years)
-  function formatUptime(seconds) {
-    const start = Temporal.PlainDateTime.from("1970-01-01T00:00");
-    const end = start.add({ seconds: Math.floor(seconds) });
-
-    const diff = start.until(end, { largestUnit: "years" });
-
-    const parts = [];
-    if (diff.years > 0) parts.push(`${diff.years} year${diff.years !== 1 ? 's' : ''}`);
-    if (diff.days > 0) parts.push(`${diff.days} day${diff.days !== 1 ? 's' : ''}`);
-    if (diff.hours > 0) parts.push(`${diff.hours} hour${diff.hours !== 1 ? 's' : ''}`);
-    if (diff.minutes > 0) parts.push(`${diff.minutes} min`);
-
-    return parts.length > 0 ? parts.join(', ') : '0 min';
-  }
-
   const formattedUptime = formatUptime(uptime);
+
+  // Check if password query param matches for revealing account names
+  const authenticated = DASHBOARD_PASSWORD && req.query.password === DASHBOARD_PASSWORD;
 
   // In external cron mode, trigger reconnection when this endpoint is hit
   if (!USE_INTERNAL_SCHEDULING) {
     console.log("External cron ping received - triggering reconnection");
-    connectAllBots(true); // Stagger the reconnections
+    connectAllBots(true);
   }
 
   // Build HTML account rows
   const accountRows = botInstances.map((bot, i) => {
     const username = bot.client.user ? bot.client.user.username : null;
     let displayName = 'Connecting...';
-    let statusText = bot.status || 'unknown';
 
-    // Anonymize username: show asterisks matching username length
+    // Determine display name based on auth
     if (username && username.length > 0) {
-      displayName = '*'.repeat(username.length);
+      if (authenticated) {
+        // Show first 5 chars + asterisks for the rest
+        const visible = username.substring(0, 5);
+        const hidden = username.length > 5 ? '*'.repeat(username.length - 5) : '';
+        displayName = escapeHtml(visible) + hidden;
+      } else {
+        displayName = '*'.repeat(username.length);
+      }
     }
 
     // Determine status color based on actual connection state
     let statusColor = '#6c757d'; // gray for unknown
     let statusBadge = '';
-    
+
     if (bot.status === 'connected' && bot.errorCount === 0) {
       statusColor = '#28a745'; // green - healthy
-      statusBadge = '<span style="color: #28a745; font-weight: 500;">✓ Connected</span>';
+      statusBadge = '<span style="color: #28a745; font-weight: 500;">&#10003; Connected</span>';
     } else if (bot.status === 'connecting') {
       statusColor = '#ffc107'; // yellow - connecting
-      statusBadge = '<span style="color: #ffc107;">⟳ Connecting...</span>';
+      statusBadge = '<span style="color: #ffc107;">&#x27F3; Connecting...</span>';
       displayName = 'Connecting...';
     } else if (bot.status === 'error') {
       statusColor = '#dc3545'; // red - error
-      statusBadge = `<span style="color: #dc3545;">✗ Error (${bot.errorCount} errors)</span>`;
+      statusBadge = `<span style="color: #dc3545;">&#10007; Error (${bot.errorCount} recent, ${bot.totalErrorCount} total)</span>`;
     } else if (bot.status === 'disconnected') {
       statusColor = '#6c757d'; // gray - disconnected
-      statusBadge = '<span style="color: #6c757d;">⊗ Disconnected</span>';
+      statusBadge = '<span style="color: #6c757d;">&#8855; Disconnected</span>';
       displayName = 'Disconnected';
     }
 
     const lastReconnect = bot.lastReconnect ? bot.lastReconnect.toISOString() : 'Never';
 
+    // Error details row (shown below the main row if there's an error)
+    let errorDetailRow = '';
+    if (bot.lastError && bot.lastErrorTime) {
+      const safeError = escapeHtml(bot.lastError).substring(0, 200);
+      const errorAge = Math.round((now.getTime() - bot.lastErrorTime.getTime()) / 1000);
+      let errorAgeStr;
+      if (errorAge < 60) errorAgeStr = `${errorAge}s ago`;
+      else if (errorAge < 3600) errorAgeStr = `${Math.floor(errorAge / 60)}m ago`;
+      else errorAgeStr = `${Math.floor(errorAge / 3600)}h ago`;
+
+      errorDetailRow = `
+        <tr>
+          <td colspan="3" style="padding: 4px 12px 12px 32px; border-bottom: 1px solid #dee2e6; background: #fff5f5;">
+            <span style="font-size: 0.8em; color: #dc3545;">
+              Last error (${errorAgeStr}): ${safeError}
+            </span>
+          </td>
+        </tr>
+      `;
+    }
+
     return `
       <tr>
-        <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+        <td style="padding: 12px; ${errorDetailRow ? '' : 'border-bottom: 1px solid #dee2e6;'}">
           <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: ${statusColor}; margin-right: 8px;"></span>
           ${displayName}
         </td>
-        <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-size: 0.9em;">${statusBadge}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #dee2e6; color: #6c757d; font-size: 0.9em;">${lastReconnect}</td>
+        <td style="padding: 12px; ${errorDetailRow ? '' : 'border-bottom: 1px solid #dee2e6;'} font-size: 0.9em;">${statusBadge}</td>
+        <td style="padding: 12px; ${errorDetailRow ? '' : 'border-bottom: 1px solid #dee2e6;'} color: #6c757d; font-size: 0.9em;">${lastReconnect}</td>
       </tr>
+      ${errorDetailRow}
     `;
   }).join('');
 
@@ -204,7 +283,7 @@ app.get('/', (req, res) => {
     <body>
       <div class="container">
         <div class="header">
-          <h1>🟢 Discord Always Online</h1>
+          <h1>Discord Always Online</h1>
           <p>Health Check Dashboard</p>
         </div>
 
@@ -216,11 +295,11 @@ app.get('/', (req, res) => {
             </div>
             <div class="info-card">
               <h3>Mode</h3>
-              <p>${mode}</p>
+              <p>${escapeHtml(mode)}</p>
             </div>
             <div class="info-card">
               <h3>Uptime</h3>
-              <p>${formattedUptime}</p>
+              <p>${escapeHtml(formattedUptime)}</p>
             </div>
             <div class="info-card">
               <h3>Accounts</h3>
@@ -257,9 +336,12 @@ app.get('/', (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, '0.0.0.0', () => {
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(`Health check server running on port ${port}`);
   console.log(`Mode: ${USE_INTERNAL_SCHEDULING ? 'Internal Scheduling' : 'External Cron (default)'}`);
+  if (DASHBOARD_PASSWORD) {
+    console.log('Dashboard password is set - append ?password=<your_password> to reveal account names');
+  }
 });
 
 // Discord connection logic
@@ -272,46 +354,27 @@ connectAllBots(true); // Stagger initial connections
 
 // Only use internal scheduling if explicitly enabled
 if (USE_INTERNAL_SCHEDULING) {
-  console.log('⚠️  Internal scheduled reconnections are DISABLED to avoid Discord rate limits');
+  console.log('Internal scheduling mode enabled');
   console.log('   Bots will stay connected indefinitely and only reconnect if disconnected');
   console.log('   This is more reliable and less likely to trigger automation detection');
-  
-  // DISABLED: Scheduled reconnections cause Discord to rate limit
-  // Discord keeps connections alive once established - no need to reconnect
-  // The bots will automatically reconnect if they get disconnected
-  
-  /*
-  // Schedule independent reconnections for each bot at random intervals
-  function scheduleNextReconnect(botId) {
-    const minMinutes = 3;
-    const maxMinutes = 5;
-    const randomMinutes = Math.random() * (maxMinutes - minMinutes) + minMinutes;
-    const randomMs = randomMinutes * 60 * 1000;
-
-    const botInstance = botInstances[botId];
-    botInstance.nextReconnect = new Date(Date.now() + randomMs);
-
-    setTimeout(() => {
-      const date = new Date().toISOString();
-      console.log(`[${date}] Bot #${botId} scheduled reconnection triggered (waited ${(randomMs / 60000).toFixed(2)} minutes)`);
-      connectBot(botId);
-      scheduleNextReconnect(botId); // Schedule the next reconnection for this bot
-    }, randomMs);
-
-    console.log(`[${new Date().toISOString()}] [Bot #${botId}] Next reconnection scheduled in ${(randomMs / 60000).toFixed(2)} minutes`);
-  }
-
-  // Schedule reconnections for all bots independently
-  botInstances.forEach((_, index) => {
-    // Add initial random offset (0-60 seconds) to further stagger the scheduling
-    const initialOffset = Math.random() * 60 * 1000;
-    setTimeout(() => {
-      scheduleNextReconnect(index);
-    }, initialOffset);
-  });
-
-  console.log(`Independent reconnection schedules set up for ${botInstances.length} bot(s)`);
-  */
 } else {
   console.log('Waiting for external cron pings to trigger reconnections...');
 }
+
+// Graceful shutdown handler
+function handleShutdown(signal) {
+  console.log(`\n[${new Date().toISOString()}] Received ${signal}, shutting down gracefully...`);
+  shutdownAllBots();
+  server.close(() => {
+    console.log(`[${new Date().toISOString()}] HTTP server closed`);
+    process.exit(0);
+  });
+  // Force exit after 10 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    console.log(`[${new Date().toISOString()}] Forced exit after 10s timeout`);
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));

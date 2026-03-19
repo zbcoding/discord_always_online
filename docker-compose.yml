@@ -8,11 +8,13 @@ services:
     ports:
       - "${PORT:-3000}:3000"
     environment:
+      - TOKENS=${TOKENS}
       - TOKEN=${TOKEN}
       - WEBHOOK_URL=${WEBHOOK_URL}
       - WEBHOOK_URL_LOW=${WEBHOOK_URL_LOW}
       - PORT=${PORT:-3000}
-      - USE_EXTERNAL_CRON=${USE_EXTERNAL_CRON:-false}
+      - USE_INTERNAL_SCHEDULING=${USE_INTERNAL_SCHEDULING:-false}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
     env_file:
       - .env
     # Security options
