@@ -267,6 +267,7 @@ function setupErrorHandlers(botInstance) {
     botInstance.consecutiveErrors = 0;
     botInstance.backoffMs = 0;
     botInstance.lastError = null;
+    botInstance.lastErrorTime = null;
 
     // Clear connection timeout if it exists
     if (botInstance.connectionTimeout) {
@@ -323,17 +324,21 @@ function setupErrorHandlers(botInstance) {
 }
 
 // Connect all bots with staggered timing
-export function connectAllBots(stagger = true) {
+export function connectAllBots(stagger = true, silentSkip = false) {
   if (botInstances.length === 0) {
     throw new Error('No bot instances initialized. Call initializeBots() first.');
   }
 
-  console.log(`Connecting ${botInstances.length} bot(s)${stagger ? ' with staggered timing' : ''}...`);
+  if (!silentSkip) {
+    console.log(`Connecting ${botInstances.length} bot(s)${stagger ? ' with staggered timing' : ''}...`);
+  }
 
   botInstances.forEach((botInstance, index) => {
     // Skip bots that are already connected
     if (botInstance.status === 'connected') {
-      console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Already connected, skipping`);
+      if (!silentSkip) {
+        console.log(`[${new Date().toISOString()}] [Bot #${botInstance.id}] Already connected, skipping`);
+      }
       return;
     }
 

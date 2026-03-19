@@ -54,6 +54,7 @@ function escapeHtml(str) {
 }
 
 // Format uptime using Temporal API
+// Months are the largest unit intentionally
 function formatUptime(seconds) {
   const start = Temporal.PlainDateTime.from("1970-01-01T00:00");
   const end = start.add({ seconds: Math.floor(seconds) });
@@ -91,7 +92,7 @@ app.get('/', (req, res) => {
   // In external cron mode, trigger reconnection when this endpoint is hit
   if (!USE_INTERNAL_SCHEDULING) {
     console.log("External cron ping received - triggering reconnection");
-    connectAllBots(true);
+    connectAllBots(true, true); // Stagger the reconnections, suppress already connected logs
   }
 
   // Build HTML account rows
