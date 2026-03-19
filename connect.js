@@ -4,7 +4,7 @@ import { sendError, sendLowError, sendInfo } from './error.js';
 dotenv.config();
 
 // Parse tokens from environment variables
-function getTokens() {
+function _getTokensRaw() {
   // Check for TOKENS format
   if (process.env.TOKENS) {
     let tokensStr = process.env.TOKENS.trim();
@@ -86,6 +86,23 @@ function getTokens() {
   throw new Error('No tokens found. Please set either TOKENS (JSON array) or TOKEN (single value) in .env');
 }
 
+function getTokens() {
+  const rawTokens = _getTokensRaw();
+  return rawTokens.map(t => {
+    if (typeof t === 'object' && t !== null) {
+      return { name: t.name || null, token: t.token || t.value || null };
+    }
+    if (typeof t === 'string') {
+      const colonIndex = t.indexOf(':');
+      if (colonIndex > 0) {
+        return { name: t.substring(0, colonIndex).trim(), token: t.substring(colonIndex + 1).trim() };
+      }
+      return { name: null, token: t.trim() };
+    }
+    return { name: null, token: String(t).trim() };
+  }).filter(t => t.token && t.token.length > 0);
+}
+
 // Store all bot instances
 const botInstances = [];
 
@@ -94,7 +111,8 @@ export function initializeBots() {
   const tokens = getTokens();
 
   for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
+    const tokenObj = tokens[i];
+    const token = tokenObj.token;
 
     // Create a Discord.js selfbot client for each token
     const client = new Client({
@@ -105,6 +123,7 @@ export function initializeBots() {
       id: i,
       client,
       token,
+      providedName: tokenObj.name,
       username: null,
       lastReconnect: null,
       nextReconnect: null,
@@ -130,7 +149,7 @@ export function initializeBots() {
 export function getUsername(botId = 0) {
   if (botId >= 0 && botId < botInstances.length) {
     const bot = botInstances[botId];
-    return bot.client.user ? bot.client.user.username : `Bot #${botId}`;
+    return bot.client.user ? bot.client.user.username : (bot.providedName || `Bot #${botId}`);
   }
   return 'Unknown';
 }
@@ -138,15 +157,15 @@ export function getUsername(botId = 0) {
 // Get all usernames
 export function getAllUsernames() {
   return botInstances.map((bot, index) =>
-    bot.client.user ? bot.client.user.username : `Bot #${index}`
+    bot.client.user ? bot.client.user.username : (bot.providedName || `Bot #${index}`)
   );
 }
 
 // Mask token for safe logging
 function maskToken(token) {
   if (!token) return '***MASKED***';
-  return token.length > 12
-    ? `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
+  return token.length > 8
+    ? `${token.substring(0, 4)}...${token.substring(token.length - 4)}`
     : '***MASKED***';
 }
 
@@ -162,7 +181,7 @@ function setupErrorHandlers(botInstance) {
 
   client.on("error", async (err) => {
     const username = getUsername(id);
-    let errorMessage = `Account: ${username} (Bot #${id}) `;
+    let errorMessage = `Account: ${username} (Bot #${id}, Token: ${maskToken(botInstance.token)}) `;
     const errStr = err.toString();
 
     // Track error in bot instance
@@ -361,7 +380,8 @@ export function connectAllBots(stagger = true, silentSkip = false) {
         botInstance.errorCount++;
         botInstance.totalErrorCount++;
         botInstance.consecutiveErrors++;
-        sendError(`Bot #${botInstance.id} login failed: ${safeMessage}`);
+        const name = getUsername(botInstance.id);
+        sendError(`Account ${name} (Token: ${maskToken(botInstance.token)}) login failed: ${safeMessage}`);
       });
 
       botInstance.lastReconnect = new Date();
@@ -387,7 +407,8 @@ export function connectAllBots(stagger = true, silentSkip = false) {
           botInstance.errorCount++;
           botInstance.totalErrorCount++;
           botInstance.consecutiveErrors++;
-          sendError(`Bot #${botInstance.id} connection timed out after 60s - likely invalid/expired token`);
+          const name = getUsername(botInstance.id);
+          sendError(`Account ${name} (Token: ${maskToken(botInstance.token)}) connection timed out after 60s - likely invalid/expired token`);
         }
       }, 60000);
     }, delay);
@@ -438,7 +459,8 @@ function attemptConnection(botId) {
     botInstance.errorCount++;
     botInstance.totalErrorCount++;
     botInstance.consecutiveErrors++;
-    sendError(`Bot #${botId} login failed: ${safeMessage}`);
+    const name = getUsername(botId);
+    sendError(`Account ${name} (Token: ${maskToken(botInstance.token)}) login failed: ${safeMessage}`);
   });
 
   botInstance.lastReconnect = new Date();
@@ -464,7 +486,8 @@ function attemptConnection(botId) {
       botInstance.errorCount++;
       botInstance.totalErrorCount++;
       botInstance.consecutiveErrors++;
-      sendError(`Bot #${botId} connection timed out after 60s - likely invalid/expired token`);
+      const name = getUsername(botId);
+      sendError(`Account ${name} (Token: ${maskToken(botInstance.token)}) connection timed out after 60s - likely invalid/expired token`);
     }
   }, 60000);
 }
