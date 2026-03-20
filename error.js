@@ -1,6 +1,17 @@
 import fetch from 'node-fetch';
 
 /**
+ * Escape Discord markdown formatting characters so messages render as plain text.
+ * Escapes: \ * _ ~ | ` > # - [ ] ( )
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeDiscordMarkdown(text) {
+  if (!text) return text;
+  return text.replace(/[\\*_~|`>#\-\[\]()]/g, '\\$&');
+}
+
+/**
  * Send a notification to Discord webhook
  * @param {string} webhookURL - Discord webhook URL
  * @param {string} message - Message to send
@@ -18,7 +29,7 @@ async function sendWebhookNotification(webhookURL, message, level = 'error') {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ content: message }),
+      body: JSON.stringify({ content: escapeDiscordMarkdown(message) }),
     });
     console.log(`Sent ${level} level notification to Discord`);
   } catch (err) {
