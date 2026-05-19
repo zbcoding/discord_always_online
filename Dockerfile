@@ -29,4 +29,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=5 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1
 
 # Start the application
-CMD ["node", "index.js"]
+CMD ["node", "src/index.js"]

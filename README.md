@@ -20,7 +20,7 @@ cp .env.example .env
 # Edit .env with your Discord token
 
 # Run with Docker Compose
-docker-compose up -d
+docker-compose up -d --build
 
 # Check status
 curl http://localhost:3000
